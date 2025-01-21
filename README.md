@@ -1,10 +1,7 @@
 # International Delta Platform Documentation
 
-## User Guide
-
-## Description of Tools 
-### Dashboard
-#### Installation
+## Dashboard
+### Installation
 The repository contains the necessary environments and tools to visualize the first version of the IDP dashboard. Follow these steps to install the required packages and run the server (Solara server) to visualize the dashboard.
 
 Install the environment using the following command in the Miniforge prompt (more information about Miniforge installation [here](https://github.com/conda-forge/miniforge)):
@@ -22,8 +19,7 @@ solara run dashboard/dashboard-idp.py
 
 **Note:** The *.yml and .py files are relative to the repository path on your computer. Ensure you change your directory to the repository location folder before running the commands. 
 
-#### Roadmap 
-
+### User Guide 
 After running the application, the following page will open in your browser: [http://localhost:8765/](http://localhost:8765/).
 
 ![Table Description](images/idp-1.png)
@@ -42,7 +38,14 @@ After selecting the desired settings, press the "Get statistics" button to calcu
 
 ![Table Description](images/idp-4.png)
 
-#### Useful Links (I will continue the documentation in the next session)
+### Roadmap
+The current application is a Minimum Viable Product (MVP) that integrates two layers from the Deltares STAC catalog. Further development includes the integration of other datasets, such as the Global Population dataset, into the visualization or the calculation of statistics in the current version of the products.
+
+The Minimum Viable Product also requires redefinition in terms of how the STAC catalog, collections, and items are accessed. Currently, the SLR or subsidence layers are filtered out from .csv files where STAC metadata was pre-saved. These .csv files are read on the fly and filtered out based on the selected zone. Further development will require directly calling the STAC items using the pystac_client (see examples/get_data_from_STAC.ipynb).
+
+The application is currently not modifying the STAC items for visualization but makes the grid data transparent beyond the selected ranges. Further development would include modifying the layers to load data only for the area of interest.
+
+### Useful Links (I will continue the documentation in the next session)
 - [Solara Dashboard Tutorial Part 1](https://solara.dev/documentation/getting_started/tutorials/jupyter-dashboard-part1)
 - [Solara Examples: ipyleaflet](https://solara.dev/documentation/examples/libraries/ipyleaflet)
 - [IDP Workbench Repository](https://github.com/Deltares-research/IDP-workbench)

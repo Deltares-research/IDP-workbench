@@ -36,9 +36,6 @@ class LineStringModel(FeatureBaseModel, geometry_field="line"):
             "content": {"image/png": {}},
             "description": "A PNG image of the elevation profile plot",
         },
-        404: {
-            "description": "No data found for the given line",
-        },
         500: {
             "description": "Internal server error",
         },
@@ -46,7 +43,7 @@ class LineStringModel(FeatureBaseModel, geometry_field="line"):
 )
 async def line_plot(
     line_string: Annotated[
-        LineStringModel.GeoJsonDataModel,
+        LineStringModel.GeoJsonDataModel,  # type: ignore
         Body(
             example={
                 "type": "Feature",
@@ -57,7 +54,7 @@ async def line_plot(
                 "properties": {},
             }
         ),
-    ],  # type: ignore
+    ],
     background_tasks: BackgroundTasks,
 ) -> Response:
     try:
@@ -79,7 +76,7 @@ async def line_plot(
 
         # Return the image as a response with appropriate headers
         background_tasks.add_task(buf.close)
-        # background_tasks.add_task(plt.close(fig))
+        background_tasks.add_task(plt.close, fig)
         return Response(
             content=buf.getvalue(),
             media_type="image/png",

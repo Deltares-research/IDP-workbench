@@ -117,8 +117,8 @@ def Page():
         with solara.Row():
             solara.Button("Get statistics", on_click=update_gdf)
 
-    def View_leaf():    
-
+    def View_leaf(): 
+            
         def load_stac_slr(Map, url, name_cog):
             vmin = applied_state.value.get("slr_range")[0]
             vmax = applied_state.value.get("slr_range")[1]
@@ -165,7 +165,7 @@ def Page():
         url_slr = f'https://storage.googleapis.com/dgds-data-public/coclico/ar6_slr/ssp={applied_state.value.get("slr_scenario")}/slr_ens50.0/{str(applied_state.value.get("slr_year"))}.tif'
         
         Map_global = leafmap.Map(zoom_start=15)
-        Map_global = load_stac_slr(Map_global, url_slr, 'SLR')
+        # Map_global = load_stac_slr(Map_global, url_slr, 'SLR')
         Map_global = load_stac_sub_list(Map_global, [url_sub])
         Map_global = load_gdf(Map_global, bbox_gd, applied_state.value.get("delta"))
         return url_slr, url_sub, id
@@ -231,18 +231,16 @@ def Page():
 
             solara.Markdown(r'''# Data analysis''')
             solara.Markdown(r'''#### Global statistics''')
-            with solara.Columns([0.6, 0.6]):  
-                with solara.Column():   
-                    View_mean(url_slr, 'SLR', 'slr_range', "mm", full=True)
-                with solara.Column():  
-                    View_mean(url_sub, "Sub", "sub_range", "1", full=True)
+            # with solara.Columns([0.6, 0.6]):  
+            #     with solara.Column():   
+            #         View_mean(url_slr, 'SLR', 'slr_range', "mm", full=True)
+            #     with solara.Column():  
+            #         View_mean(url_sub, "Sub", "sub_range", "1", full=True)
 
-            solara.Markdown(r'''#### Hotspot''')
-            with solara.Columns([0.6, 0.6]):  
-                with solara.Column():   
-                    View_mean(url_slr, 'SLR', 'slr_range', "mm", full=False)
+            # solara.Markdown(r'''#### Hotspot''')
+            # with solara.Columns([0.6, 0.6]):  
+            #     with solara.Column():   
+            #         View_mean(url_slr, 'SLR', 'slr_range', "mm", full=False)
 
-                with solara.Column():  
-                    View_mean(url_sub, "Sub", "sub_range", "1", full=False)
-
-
+            #     with solara.Column():  
+            #         View_mean(url_sub, "Sub", "sub_range", "1", full=False)

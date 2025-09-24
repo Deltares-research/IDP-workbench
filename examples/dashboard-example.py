@@ -52,7 +52,7 @@ def crime_map(df):
     display(sanfran_map)
 
 
-path = r'C:\Users\fuentesm\Projects\IDP\Data\Input\Geodata\solara\SF_crime_sample\SF_crime_sample.csv'
+path = r"C:\Users\fuentesm\Deltares\2024B\IDP\Data\Input\Geodata\solara\SF_crime_sample\SF_crime_sample.csv"
 df_crime = pd.read_csv(path)
 
 df_crime["Category"] = df_crime["Category"].str.title()

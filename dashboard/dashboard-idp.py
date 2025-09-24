@@ -1,33 +1,10 @@
-import pandas as pd
-from pathlib import Path
 import solara
-import matplotlib.pyplot as plt
-import folium
-import folium.plugins
-import solara
-import leafmap
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import rioxarray as rio
-import time
-import threading
-import asyncio
-import geopandas as gpd
-from folium import raster_layers
-import geemap
-import folium
-from folium import raster_layers
-import numpy as np
-import geopandas as gpd
 import pandas as pd
 import geopandas as gpd
-from shapely.geometry import shape
-from shapely.geometry import shape, MultiPolygon
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import leafmap
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import matplotlib as mpl
 import matplotlib.cm as cm
 
@@ -53,7 +30,6 @@ delta = solara.reactive("Mekong Delta")
 # Sea level rise
 slr_scenario= solara.reactive("1-26")
 slr_year   = solara.reactive(2020)
-
 slr_range = solara.reactive((-90, 90))
 slr_opacity = solara.reactive(100)
 slr_mean = solara.reactive(0)
@@ -115,7 +91,7 @@ def Page():
             ## 
             ''')
         with solara.Row():
-            solara.Button("Get statistics", on_click=update_gdf)
+            solara.Button("Inspect Delta", on_click=update_gdf)
 
     def View_leaf(): 
             
@@ -126,9 +102,9 @@ def Page():
             norm = mcolors.Normalize(vmin=vmin, vmax=vmax)  
             custom_cmap = {i: mcolors.to_hex(cmap(norm(i))) for i in range(vmin, vmax)}
             opacity_value = applied_state.value.get("slr_opacity")/100
-            Map.add_cog_layer(url, colormap=custom_cmap, name=name_cog, opacity=opacity_value, nodata=np.nan, zoom_to_layer=False)
+            Map.add_cog_layer(url, colormap=custom_cmap, name=name_cog, opacity=opacity_value, zoom_to_layer=False)
             return Map
-
+        
         def load_stac_sub_list(Map, url_list):
             vmin = applied_state.value.get("sub_range")[0] 
             vmax = applied_state.value.get("sub_range")[1]
@@ -144,7 +120,6 @@ def Page():
             df_delta = df.loc[df["Location"].isin([district_values])]
             Map.add_gdf(df_delta, layer_name="Deltas", style={"fillColor": "yellow", "color": "yellow", "weight": 3, "fillOpacity": 0.1})
             Map.zoom_to_gdf(df_delta)
-            display(Map)
             return Map
         
         def get_sub_id(gdf):
@@ -162,12 +137,13 @@ def Page():
         id = get_sub_id(gdf_stac)
 
         url_sub = f'https://storage.googleapis.com/dgds-data-public/gca/SOTC/Haz-Land_Sub_2040_COGs/{id}.tif' 
-        url_slr = f'https://storage.googleapis.com/dgds-data-public/coclico/ar6_slr/ssp={applied_state.value.get("slr_scenario")}/slr_ens50.0/{str(applied_state.value.get("slr_year"))}.tif'
+        url_slr = f'https://storage.googleapis.com/coclico-data-public/coclico/ar6_slr/ssp={applied_state.value.get("slr_scenario")}/slr_ens50.0/{str(applied_state.value.get("slr_year"))}.tif'
         
         Map_global = leafmap.Map(zoom_start=15)
-        # Map_global = load_stac_slr(Map_global, url_slr, 'SLR')
+        Map_global = load_stac_slr(Map_global, url_slr, 'SLR')
         Map_global = load_stac_sub_list(Map_global, [url_sub])
         Map_global = load_gdf(Map_global, bbox_gd, applied_state.value.get("delta"))
+        display(Map_global)
         return url_slr, url_sub, id
     
     def View_mean(url, var, ranges, unit, full):
@@ -231,16 +207,16 @@ def Page():
 
             solara.Markdown(r'''# Data analysis''')
             solara.Markdown(r'''#### Global statistics''')
-            # with solara.Columns([0.6, 0.6]):  
-            #     with solara.Column():   
-            #         View_mean(url_slr, 'SLR', 'slr_range', "mm", full=True)
-            #     with solara.Column():  
-            #         View_mean(url_sub, "Sub", "sub_range", "1", full=True)
+            with solara.Columns([0.6, 0.6]):  
+                with solara.Column():   
+                    View_mean(url_slr, 'SLR', 'slr_range', "mm", full=True)
+                with solara.Column():  
+                    View_mean(url_sub, "Sub", "sub_range", "1", full=True)
 
-            # solara.Markdown(r'''#### Hotspot''')
-            # with solara.Columns([0.6, 0.6]):  
-            #     with solara.Column():   
-            #         View_mean(url_slr, 'SLR', 'slr_range', "mm", full=False)
+            solara.Markdown(r'''#### Hotspot''')
+            with solara.Columns([0.6, 0.6]):  
+                with solara.Column():   
+                    View_mean(url_slr, 'SLR', 'slr_range', "mm", full=False)
 
-            #     with solara.Column():  
-            #         View_mean(url_sub, "Sub", "sub_range", "1", full=False)
+                with solara.Column():  
+                    View_mean(url_sub, "Sub", "sub_range", "1", full=False)

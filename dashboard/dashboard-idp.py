@@ -118,9 +118,18 @@ def Page():
         def load_gdf(Map, df, district_values):
             df_delta = df.loc[df["Location"].isin([district_values])]
             Map.add_gdf(df_delta, layer_name="Deltas", style={"fillColor": "yellow", "color": "yellow", "weight": 3, "fillOpacity": 0.1})
-            Map.zoom_to_gdf(df_delta)
-            return Map
-        
+
+            # Convert to WGS84 and compute centroid
+            df_delta_4326 = df_delta.to_crs(epsg=4326)
+            centroid = df_delta_4326.geometry.centroid.iloc[0]
+
+            # Center and zoom the map (leafmap syntax)
+            Map.center = [centroid.y, centroid.x]
+            Map.zoom = 7
+
+            # Display the map
+            display(Map)
+
         def get_sub_id(gdf):
             bbox_gdf_site = bbox_gd[bbox_gd['Location']==applied_state.value.get("delta")]
             if gdf.crs != bbox_gdf_site.crs:
@@ -142,7 +151,6 @@ def Page():
         Map_global = load_stac_slr(Map_global, url_slr, 'SLR')
         Map_global = load_stac_sub_list(Map_global, [url_sub])
         Map_global = load_gdf(Map_global, bbox_gd, applied_state.value.get("delta"))
-        display(Map_global)
         
         return url_slr, url_sub, id
     

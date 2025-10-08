@@ -34,3 +34,8 @@ dependencies:
   - geopandas
   - colorcet
   - stac-geoparquet
+  - plotly
+  - python-kaleido=0.1.0
+  - ipykernel
+  - jupyterlab-myst
+  - jupyterlab

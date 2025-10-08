@@ -1,0 +1,36 @@
+name: idp-tutorials
+
+channels:
+  - conda-forge
+
+dependencies:
+  - python
+  - numpy
+  - matplotlib
+  - pandas
+  - bokeh
+  - dask
+  - zarr
+  - rioxarray
+  - hvplot
+  - ipyleaflet
+  - cartopy
+  - pyam
+  - pathlib
+  - dask-geopandas
+  - xarray
+  - holoviews
+  - pystac-client
+  - python-dotenv
+  - pip
+  - rasterio
+  - rioxarray
+  - spatialpandas
+  - pystac
+  - typing
+  - fsspec
+  - shapely
+  - geoviews
+  - geopandas
+  - colorcet
+  - stac-geoparquet

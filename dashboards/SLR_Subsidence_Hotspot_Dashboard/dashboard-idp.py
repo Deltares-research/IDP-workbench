@@ -6,6 +6,7 @@ import leafmap
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib as mpl
+import os
 import matplotlib.cm as cm
 
 # Funcitons
@@ -16,9 +17,13 @@ def delta_filter(df, district_values):
 
 # Data
 # RCP description, bounding boxes of deltas, metadata of subsidence stac collection 
-rcp_df = pd.read_csv("dashboard/data/rcp_scenarios.csv")
-bbox_gd = gpd.read_file("dashboard/data/Deltas.geojson")
-gdf_stac = gpd.read_file("dashboard/data/stac_metadata.geojson")
+# Get the directory where the current script is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+
+rcp_df = pd.read_csv(os.path.join(DATA_DIR, "rcp_scenarios.csv"))
+bbox_gd = gpd.read_file(os.path.join(DATA_DIR, "Deltas.geojson"))
+gdf_stac = gpd.read_file(os.path.join(DATA_DIR, "stac_metadata.geojson"))
 
 # Static variables. 
 # This variable don't change during the dashboard execution

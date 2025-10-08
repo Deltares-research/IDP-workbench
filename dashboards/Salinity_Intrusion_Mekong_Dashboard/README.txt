@@ -1,0 +1,1 @@
+This is a dashboard for visualizing salinity intrusion data in the Mekong region. It provides interactive maps and charts to help users understand the extent and impact of salinity intrusion on local communities and ecosystems.

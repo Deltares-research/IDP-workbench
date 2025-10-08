@@ -20,26 +20,24 @@ rcp_df = pd.read_csv("dashboard/data/rcp_scenarios.csv")
 bbox_gd = gpd.read_file("dashboard/data/Deltas.geojson")
 gdf_stac = gpd.read_file("dashboard/data/stac_metadata.geojson")
 
-# Static variables
+# Static variables. 
+# This variable don't change during the dashboard execution
 scenarios_ipcc = ["1-26", "2-45", "5-85"]
 deltas = bbox_gd["Location"].unique().tolist()
 
-# Dynamic variables. The variables require to be inicialize
-# Zone
-delta = solara.reactive("Mekong Delta")
-# Sea level rise
-slr_scenario= solara.reactive("1-26")
+# Dynamic variables. 
+# These variables change during the dashboard execution. The variables require to be inicialize
+delta = solara.reactive("Mekong Delta") # Zone
+slr_scenario= solara.reactive("1-26") # Sea level rise
 slr_year   = solara.reactive(2020)
 slr_range = solara.reactive((-90, 90))
 slr_opacity = solara.reactive(100)
 slr_mean = solara.reactive(0)
 slr_max = solara.reactive(0)
 slr_min = solara.reactive(0)
-# Subsidence
-sub_range = solara.reactive((0, 14))
+sub_range = solara.reactive((0, 14)) # Subsidence
 sub_opacity = solara.reactive(100)
 
-# Inicializing variables through dictionary
 applied_state = solara.reactive({
 "delta": "Mekong Delta",
 "slr_range": (-90, 90),
@@ -53,8 +51,10 @@ applied_state = solara.reactive({
 "slr_min": 0,
 })
 
+# Dashboard components are defined and called below
 @solara.component
 def Page():
+
     def Controls():
         solara.Markdown(r'''
             # International Delta Platform      
@@ -93,8 +93,7 @@ def Page():
         with solara.Row():
             solara.Button("Inspect Delta", on_click=update_gdf)
 
-    def View_leaf(): 
-            
+    def Map(): 
         def load_stac_slr(Map, url, name_cog):
             vmin = applied_state.value.get("slr_range")[0]
             vmax = applied_state.value.get("slr_range")[1]
@@ -119,9 +118,18 @@ def Page():
         def load_gdf(Map, df, district_values):
             df_delta = df.loc[df["Location"].isin([district_values])]
             Map.add_gdf(df_delta, layer_name="Deltas", style={"fillColor": "yellow", "color": "yellow", "weight": 3, "fillOpacity": 0.1})
-            Map.zoom_to_gdf(df_delta)
-            return Map
-        
+
+            # Convert to WGS84 and compute centroid
+            df_delta_4326 = df_delta.to_crs(epsg=4326)
+            centroid = df_delta_4326.geometry.centroid.iloc[0]
+
+            # Center and zoom the map (leafmap syntax)
+            Map.center = [centroid.y, centroid.x]
+            Map.zoom = 7
+
+            # Display the map
+            display(Map)
+
         def get_sub_id(gdf):
             bbox_gdf_site = bbox_gd[bbox_gd['Location']==applied_state.value.get("delta")]
             if gdf.crs != bbox_gdf_site.crs:
@@ -143,10 +151,10 @@ def Page():
         Map_global = load_stac_slr(Map_global, url_slr, 'SLR')
         Map_global = load_stac_sub_list(Map_global, [url_sub])
         Map_global = load_gdf(Map_global, bbox_gd, applied_state.value.get("delta"))
-        display(Map_global)
+        
         return url_slr, url_sub, id
     
-    def View_mean(url, var, ranges, unit, full):
+    def Statistics(url, var, ranges, unit, full):
         def calculate_mean(url):
             item = rio.open_rasterio(url)
             mean_value = item.mean().item()
@@ -174,8 +182,7 @@ def Page():
         solara.Markdown(f"**Min {var}**:\n   {min:.2f} [{unit}]")
         solara.Markdown(f"**Mean {var}**:\n {mean:.2f} [{unit}]")
 
-
-    def View_scale(title, ranges, cmap):
+    def Scale(title, ranges, cmap):
         fig, ax = plt.subplots(figsize=(6, 1))
         fig.subplots_adjust(bottom=0.5)
 
@@ -186,37 +193,51 @@ def Page():
 
         return plt.show()
 
-
+    # Below all the components are called to create the dashboard
+    # This component will create the sidebar of the dashboard. This part is static and does not refresh with changes in the sidebar
     with solara.Sidebar():
         Controls()
         solara.Markdown(r'''####  ''')
 
-    with solara.Columns([1, 0.5]):  
-
+    # This component will create the layout of the dashboard. This part is refresh with every change in the sidebar
+    with solara.Columns([1, 0.5, 0.5]):  
+        # This component will display the map and its labels
         with solara.Column():   
-
-            url_slr, url_sub, id = View_leaf()
+            url_slr, url_sub, id = Map()
+            
             with solara.Columns([1, 1]):  
                 with solara.Column():   
-                    View_scale('SLR', 'slr_range', cm.viridis)
+                    Scale('SLR', 'slr_range', cm.viridis)
 
                 with solara.Column():  
-                    View_scale('Subsidence', 'sub_range', cm.YlOrRd)
+                    Scale('Subsidence', 'sub_range', cm.YlOrRd)
 
+        # This component will display the data statistics
         with solara.Column():    
-
             solara.Markdown(r'''# Data analysis''')
             solara.Markdown(r'''#### Global statistics''')
             with solara.Columns([0.6, 0.6]):  
                 with solara.Column():   
-                    View_mean(url_slr, 'SLR', 'slr_range', "mm", full=True)
+                    Statistics(url_slr, 'SLR', 'slr_range', "mm", full=True)
                 with solara.Column():  
-                    View_mean(url_sub, "Sub", "sub_range", "1", full=True)
+                    Statistics(url_sub, "Sub", "sub_range", "1", full=True)
 
             solara.Markdown(r'''#### Hotspot''')
             with solara.Columns([0.6, 0.6]):  
                 with solara.Column():   
-                    View_mean(url_slr, 'SLR', 'slr_range', "mm", full=False)
+                    Statistics(url_slr, 'SLR', 'slr_range', "mm", full=False)
 
                 with solara.Column():  
-                    View_mean(url_sub, "Sub", "sub_range", "1", full=False)
+                    Statistics(url_sub, "Sub", "sub_range", "1", full=False)
+
+        # This component will display the metadata of the data
+        with solara.Column():   
+            solara.Markdown(r'''# Metadata''')
+            solara.Markdown(r'''#### Subsidence''')
+            solara.Markdown(f"**Subsidence ID**: {id}")
+            solara.Markdown(f"**Subsidence URL**: {url_sub}")
+            solara.Markdown(r'''#### SLR''')
+            solara.Markdown(f"**SLR URL**: {url_slr}")
+            solara.Markdown(f"**Scenario**: {applied_state.value.get('slr_scenario')}")
+            solara.Markdown(f"**Year**: {applied_state.value.get('slr_year')}")
+

@@ -51,11 +51,6 @@ SWITCH_LABELS = {
     "riverbed_disabled": "Sand Mining (Riverbed Level Incision) - {} (requires groundwater extraction)"
 }
 
-CARD_TITLES = {
-    "climate": "Climate Change Description",
-    "anthropogenic": "Anthropogenic Changes Description"
-}
-
 DEFAULT_TEXT = {
     "no_anthropogenic": "No anthropogenic changes selected. Climate-only scenario considers sea level rise and discharge variations without human-induced modifications."
 }
@@ -132,73 +127,69 @@ def Page():
                 
                 # Climate Change Section
                 solara.Markdown("## Climate Change")
-                solara.Select(
-                    label="RCP Scenario",
-                    value=climate_rcp.value,
-                    on_value=climate_rcp.set,
-                    values=RCP_OPTIONS
-                )
                 
-                # Year selection
-                solara.Select(
-                    label="Year",
-                    value=year.value,
-                    on_value=year.set,
-                    values=YEAR_OPTIONS
-                )
-                
-                # Dynamic climate description - directly under title
-                with solara.Card(CARD_TITLES["climate"], margin=0, elevation=2):
-                    solara.Markdown(get_climate_description())
+                with solara.Row():
+                    # Left side: Controls
+                    with solara.Column(style={"width": "40%"}):
+                        solara.Select(
+                            label="RCP Scenario",
+                            value=climate_rcp.value,
+                            on_value=climate_rcp.set,
+                            values=RCP_OPTIONS
+                        )
+                        
+                        # Year selection
+                        solara.Select(
+                            label="Year",
+                            value=year.value,
+                            on_value=year.set,
+                            values=YEAR_OPTIONS
+                        )
+                    
+                    # Right side: Description
+                    with solara.Column(style={"flex": "1", "padding-left": "10px"}):
+                        with solara.Card(margin=0, elevation=2):
+                            solara.Markdown(get_climate_description())
                 
                 # Anthropogenic Changes Section
                 solara.Markdown("## Anthropogenic Changes")
                 
-                # Subsidence switch with integrated name
-                subsidence_name = GROUNDWATER_SCENARIOS[climate_rcp.value]["name"]
-                solara.Switch(
-                    label=f"{SWITCH_LABELS['groundwater']} - {subsidence_name}",
-                    value=subsidence_enabled.value,
-                    on_value=subsidence_enabled.set
-                )
-                
-                # Riverbed switch with integrated name - only available if subsidence is enabled
-                riverbed_name = RIVERBED_SCENARIOS[climate_rcp.value]["name"]
-                
-                if subsidence_enabled.value:
-                    solara.Switch(
-                        label=f"{SWITCH_LABELS['riverbed']} - {riverbed_name}",
-                        value=riverbed_enabled.value,
-                        on_value=riverbed_enabled.set
-                    )
-                else:
-                    # Show disabled switch when subsidence is not enabled
-                    solara.Switch(
-                        label=SWITCH_LABELS["riverbed_disabled"].format(riverbed_name),
-                        value=False,
-                        on_value=lambda x: None,  # Do nothing when clicked
-                        disabled=True
-                    )
-                    # Reset riverbed if subsidence gets disabled
-                    if riverbed_enabled.value:
-                        riverbed_enabled.set(False)
-                
-                # Dynamic anthropogenic description - directly under switches
-                with solara.Card(CARD_TITLES["anthropogenic"], margin=0, elevation=2):
-                    solara.Markdown(get_anthropogenic_description())
-                
-                # Display current scenario info
-                current_file = get_scenario_file_path()
-                if current_file:
-                    scenario_name = os.path.basename(os.path.dirname(current_file))
-                    year_val = os.path.splitext(os.path.basename(current_file))[0]
-                    solara.Markdown("### Current Scenario")
-                    solara.Info(f"Scenario: {scenario_name}")
-                    solara.Info(f"Year: {year_val}")
-                    if not os.path.exists(current_file):
-                        solara.Warning(f"File not found: {current_file}")
-                else:
-                    solara.Warning("No valid scenario selected")
+                with solara.Row():
+                    # Left side: Controls
+                    with solara.Column(style={"width": "40%"}):
+                        # Subsidence switch with integrated name
+                        subsidence_name = GROUNDWATER_SCENARIOS[climate_rcp.value]["name"]
+                        solara.Switch(
+                            label=f"{SWITCH_LABELS['groundwater']} - {subsidence_name}",
+                            value=subsidence_enabled.value,
+                            on_value=subsidence_enabled.set
+                        )
+                        
+                        # Riverbed switch with integrated name - only available if subsidence is enabled
+                        riverbed_name = RIVERBED_SCENARIOS[climate_rcp.value]["name"]
+                        
+                        if subsidence_enabled.value:
+                            solara.Switch(
+                                label=f"{SWITCH_LABELS['riverbed']} - {riverbed_name}",
+                                value=riverbed_enabled.value,
+                                on_value=riverbed_enabled.set
+                            )
+                        else:
+                            # Show disabled switch when subsidence is not enabled
+                            solara.Switch(
+                                label=SWITCH_LABELS["riverbed_disabled"].format(riverbed_name),
+                                value=False,
+                                on_value=lambda x: None,  # Do nothing when clicked
+                                disabled=True
+                            )
+                            # Reset riverbed if subsidence gets disabled
+                            if riverbed_enabled.value:
+                                riverbed_enabled.set(False)
+                    
+                    # Right side: Description
+                    with solara.Column(style={"flex": "1", "padding-left": "10px"}):
+                        with solara.Card(margin=0, elevation=2):
+                            solara.Markdown(get_anthropogenic_description())
             
             # Right column for map - 1/2 of screen
             with solara.Column(style={"flex": "1"}):

@@ -2,6 +2,64 @@ import solara
 import leafmap
 import os
 
+# Configuration variables for input options
+RCP_OPTIONS = ["RCP 4.5", "RCP 8.5"]
+YEAR_OPTIONS = ["2030", "2040", "2050"]
+
+# Scenario names and descriptions
+CLIMATE_SCENARIOS = {
+    "RCP 4.5": {
+        "name": "Moderate scenario",
+        "description": "**Moderate scenario (1.5–2°C global temperature rise)**: Projects sea level rise and upstream discharge anomalies based on downscaled precipitation and temperature data."
+    },
+    "RCP 8.5": {
+        "name": "Extreme scenario", 
+        "description": "**Extreme scenario (3–4°C global temperature rise)**: Projects sea level rise and upstream discharge anomalies under higher warming conditions."
+    }
+}
+
+GROUNDWATER_SCENARIOS = {
+    "RCP 4.5": {
+        "code": "M2",
+        "name": "M2 scenario",
+        "description": "**M2 Groundwater Scenario**: 5% annual reduction in groundwater extraction leading to stable 50% of 2018 extraction volume, reflecting rising awareness of consequences. Results in reduced land subsidence due to aquifer-system compaction."
+    },
+    "RCP 8.5": {
+        "code": "B2", 
+        "name": "B2 scenario",
+        "description": "**B2 Groundwater Scenario**: Business-as-usual with 4% annual increase in extraction (similar to highest rates in last 25 years), leading to continued land subsidence due to aquifer-system compaction."
+    }
+}
+
+RIVERBED_SCENARIOS = {
+    "RCP 4.5": {
+        "code": "RB1",
+        "name": "RB1 scenario",
+        "description": "**RB1 Riverbed Scenario**: Significantly lower erosion rate (one-third of past 20 years) until 2040, motivated by rising awareness, shortage of erodible material, and potential policy changes. Accounts for 1 G m³ sand demand until 2040."
+    },
+    "RCP 8.5": {
+        "code": "RB3",
+        "name": "RB3 scenario", 
+        "description": "**RB3 Riverbed Scenario**: Business-as-usual with identical erosion rates as past 20 years. The estuarine system continues deepening 2-3m (losing ~2-3 G m³) due to sediment starvation from upstream trapping and downstream sand mining."
+    }
+}
+
+# UI Labels
+SWITCH_LABELS = {
+    "groundwater": "Groundwater Extraction (Subsidence)",
+    "riverbed": "Sand Mining (Riverbed Level Incision)",
+    "riverbed_disabled": "Sand Mining (Riverbed Level Incision) - {} (requires groundwater extraction)"
+}
+
+CARD_TITLES = {
+    "climate": "Climate Change Description",
+    "anthropogenic": "Anthropogenic Changes Description"
+}
+
+DEFAULT_TEXT = {
+    "no_anthropogenic": "No anthropogenic changes selected. Climate-only scenario considers sea level rise and discharge variations without human-induced modifications."
+}
+
 zoom = solara.reactive(8)
 center = solara.reactive((10.8, 106.7))  # Mekong Delta coordinates
 
@@ -16,7 +74,7 @@ BASE_PATH = r"C:\Users\athanasi\Project_files\1_Projects_SITO\IDP\Data\salinity_
 
 def get_scenario_file_path():
     """Generate the file path based on current scenario selections."""
-    rcp_code = "45" if climate_rcp.value == "RCP 4.5" else "85"
+    rcp_code = "45" if climate_rcp.value == RCP_OPTIONS[0] else "85"
     
     # Determine scenario folder based on enabled options
     if subsidence_enabled.value and riverbed_enabled.value:
@@ -48,28 +106,19 @@ def Page():
     
     # Function to get dynamic description based on current selections
     def get_climate_description():
-        if climate_rcp.value == "RCP 4.5":
-            return "**Moderate scenario (1.5–2°C global temperature rise)**: Projects sea level rise and upstream discharge anomalies based on downscaled precipitation and temperature data."
-        else:
-            return "**Extreme scenario (3–4°C global temperature rise)**: Projects sea level rise and upstream discharge anomalies under higher warming conditions."
+        return CLIMATE_SCENARIOS[climate_rcp.value]["description"]
     
     def get_anthropogenic_description():
         descriptions = []
         
         if subsidence_enabled.value:
-            if climate_rcp.value == "RCP 4.5":
-                descriptions.append("**M2 Groundwater Scenario**: 5% annual reduction in groundwater extraction leading to stable 50% of 2018 extraction volume, reflecting rising awareness of consequences. Results in reduced land subsidence due to aquifer-system compaction.")
-            else:
-                descriptions.append("**B2 Groundwater Scenario**: Business-as-usual with 4% annual increase in extraction (similar to highest rates in last 25 years), leading to continued land subsidence due to aquifer-system compaction.")
+            descriptions.append(GROUNDWATER_SCENARIOS[climate_rcp.value]["description"])
         
         if riverbed_enabled.value:
-            if climate_rcp.value == "RCP 4.5":
-                descriptions.append("\n\n**RB1 Riverbed Scenario**: Significantly lower erosion rate (one-third of past 20 years) until 2040, motivated by rising awareness, shortage of erodible material, and potential policy changes. Accounts for 1 G m³ sand demand until 2040.")
-            else:
-                descriptions.append("\n\n**RB3 Riverbed Scenario**: Business-as-usual with identical erosion rates as past 20 years. The estuarine system continues deepening 2-3m (losing ~2-3 G m³) due to sediment starvation from upstream trapping and downstream sand mining.")
+            descriptions.append("\n\n" + RIVERBED_SCENARIOS[climate_rcp.value]["description"])
         
         if not descriptions:
-            return "No anthropogenic changes selected. Climate-only scenario considers sea level rise and discharge variations without human-induced modifications."
+            return DEFAULT_TEXT["no_anthropogenic"]
         
         return " ".join(descriptions)
     
@@ -87,7 +136,7 @@ def Page():
                     label="RCP Scenario",
                     value=climate_rcp.value,
                     on_value=climate_rcp.set,
-                    values=["RCP 4.5", "RCP 8.5"]
+                    values=RCP_OPTIONS
                 )
                 
                 # Year selection
@@ -95,37 +144,37 @@ def Page():
                     label="Year",
                     value=year.value,
                     on_value=year.set,
-                    values=["2030", "2040", "2050"]
+                    values=YEAR_OPTIONS
                 )
                 
                 # Dynamic climate description - directly under title
-                with solara.Card("Climate Change Description", margin=0, elevation=2):
+                with solara.Card(CARD_TITLES["climate"], margin=0, elevation=2):
                     solara.Markdown(get_climate_description())
                 
                 # Anthropogenic Changes Section
                 solara.Markdown("## Anthropogenic Changes")
                 
                 # Subsidence switch with integrated name
-                subsidence_name = "M2 scenario" if climate_rcp.value == "RCP 4.5" else "B2 scenario"
+                subsidence_name = GROUNDWATER_SCENARIOS[climate_rcp.value]["name"]
                 solara.Switch(
-                    label=f"Groundwater Extraction (Subsidence) - {subsidence_name}",
+                    label=f"{SWITCH_LABELS['groundwater']} - {subsidence_name}",
                     value=subsidence_enabled.value,
                     on_value=subsidence_enabled.set
                 )
                 
                 # Riverbed switch with integrated name - only available if subsidence is enabled
-                riverbed_name = "RB1 scenario" if climate_rcp.value == "RCP 4.5" else "RB3 scenario"
+                riverbed_name = RIVERBED_SCENARIOS[climate_rcp.value]["name"]
                 
                 if subsidence_enabled.value:
                     solara.Switch(
-                        label=f"Sand Mining (Riverbed Level Incision) - {riverbed_name}",
+                        label=f"{SWITCH_LABELS['riverbed']} - {riverbed_name}",
                         value=riverbed_enabled.value,
                         on_value=riverbed_enabled.set
                     )
                 else:
                     # Show disabled switch when subsidence is not enabled
                     solara.Switch(
-                        label=f"Sand Mining (Riverbed Level Incision) - {riverbed_name} (requires groundwater extraction)",
+                        label=SWITCH_LABELS["riverbed_disabled"].format(riverbed_name),
                         value=False,
                         on_value=lambda x: None,  # Do nothing when clicked
                         disabled=True
@@ -135,7 +184,7 @@ def Page():
                         riverbed_enabled.set(False)
                 
                 # Dynamic anthropogenic description - directly under switches
-                with solara.Card("Anthropogenic Changes Description", margin=0, elevation=2):
+                with solara.Card(CARD_TITLES["anthropogenic"], margin=0, elevation=2):
                     solara.Markdown(get_anthropogenic_description())
                 
                 # Display current scenario info

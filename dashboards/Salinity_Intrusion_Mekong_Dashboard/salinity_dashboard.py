@@ -89,12 +89,46 @@ def get_scenario_file_path():
         # Only climate change (no anthropogenic changes)
         scenario_folder = f"cc{rcp_code}y"
     
-    file_path = os.path.join(BASE_PATH, scenario_folder, f"{year.value}.tif")
+    # Use online file URL format for now
+    file_url = f"https://storage.cloud.google.com/dgds-data-public/gca/salinity/{scenario_folder}/{year.value}.tif"
+    return file_url
+
+class Map(leafmap.Map):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Add what you want below
+        self.add_basemap("Esri.WorldImagery")
+        self.scenario_layer = None
     
-    # Check if file exists, if not return None
-    if os.path.exists(file_path):
-        return file_path
-    return None
+    def update_scenario_layer(self, file_url):
+        """Update the scenario layer with a new COG file."""
+        # Remove existing scenario layer if it exists
+        if self.scenario_layer is not None:
+            try:
+                # Remove layer by name
+                layers_to_remove = [layer for layer in self.layers if hasattr(layer, 'name') and layer.name == "Salinity Scenario"]
+                for layer in layers_to_remove:
+                    self.remove_layer(layer)
+            except Exception as e:
+                print(f"Error removing layer: {e}")
+        
+        # Add new layer if file URL is provided
+        if file_url:
+            try:
+                # Try to add COG layer using the online URL
+                self.add_cog_layer(
+                    url=file_url,
+                    name="Salinity Scenario",
+                    opacity=0.7,
+                    zoom_to_layer=False
+                )
+                self.scenario_layer = "Salinity Scenario"
+                print(f"Successfully loaded COG: {file_url}")
+            except Exception as e:
+                print(f"Error loading COG: {e}")
+                self.scenario_layer = None
+        else:
+            self.scenario_layer = None
 
 @solara.component
 def Page():
@@ -116,6 +150,23 @@ def Page():
             return DEFAULT_TEXT["no_anthropogenic"]
         
         return " ".join(descriptions)
+    
+    # Create a persistent map instance
+    map_instance = solara.use_memo(lambda: Map(
+        zoom=zoom.value,
+        center=center.value,
+        scroll_wheel_zoom=True,
+        toolbar_ctrl=False,
+        data_ctrl=False,
+    ), [])
+    
+    # Effect to update COG layer when scenario changes
+    def update_cog_layer():
+        file_url = get_scenario_file_path()
+        if map_instance and hasattr(map_instance, 'update_scenario_layer'):
+            map_instance.update_scenario_layer(file_url)
+    
+    solara.use_effect(update_cog_layer, [climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value])
     
     with solara.Column():
         solara.Markdown("# Salinity Intrusion Dashboard for Mekong Delta")
@@ -193,8 +244,8 @@ def Page():
             
             # Right column for map - 1/2 of screen
             with solara.Column(style={"flex": "1"}):
-                # Simple leafmap without complex features
-                leafmap.Map.element(
+                # Use the persistent map instance
+                Map.element(
                     zoom=zoom.value,
                     on_zoom=zoom.set,
                     center=center.value,

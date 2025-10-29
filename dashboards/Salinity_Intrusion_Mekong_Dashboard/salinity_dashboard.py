@@ -1,6 +1,9 @@
 import solara
 import leafmap
 import os
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+from matplotlib.colors import LinearSegmentedColormap
 
 # Configuration variables for input options
 RCP_OPTIONS = ["RCP 4.5", "RCP 8.5"]
@@ -10,11 +13,11 @@ YEAR_OPTIONS = ["2030", "2040", "2050"]
 CLIMATE_SCENARIOS = {
     "RCP 4.5": {
         "name": "Moderate scenario",
-        "description": "**Moderate scenario (1.5–2°C global temperature rise)**: Projects sea level rise and upstream discharge anomalies based on downscaled precipitation and temperature data."
+        "description": "**Moderate scenario (1.5–2°C global temperature rise)**: Effects of sea level rise and upstream discharge anomalies under moderate warming conditions."
     },
     "RCP 8.5": {
         "name": "Extreme scenario", 
-        "description": "**Extreme scenario (3–4°C global temperature rise)**: Projects sea level rise and upstream discharge anomalies under higher warming conditions."
+        "description": "**Extreme scenario (3–4°C global temperature rise)**: Effects of sea level rise and upstream discharge anomalies under higher warming conditions."
     }
 }
 
@@ -22,12 +25,12 @@ GROUNDWATER_SCENARIOS = {
     "RCP 4.5": {
         "code": "M2",
         "name": "M2 scenario",
-        "description": "**M2 Groundwater Scenario**: 5% annual reduction in groundwater extraction leading to stable 50% of 2018 extraction volume, reflecting rising awareness of consequences. Results in reduced land subsidence due to aquifer-system compaction."
+        "description": "**M2 Groundwater Extraction Scenario**: 5% annual reduction in groundwater extraction leading to stable 50% of 2018 extraction volume, reflecting rising awareness of consequences. Results in reduced land subsidence due to aquifer-system compaction."
     },
     "RCP 8.5": {
         "code": "B2", 
         "name": "B2 scenario",
-        "description": "**B2 Groundwater Scenario**: Business-as-usual with 4% annual increase in extraction (similar to highest rates in last 25 years), leading to continued land subsidence due to aquifer-system compaction."
+        "description": "**B2 Groundwater Extraction Scenario**: Business-as-usual with 4% annual increase in groundwater extraction (similar to highest rates in last 25 years), leading to continued land subsidence due to aquifer-system compaction."
     }
 }
 
@@ -47,8 +50,8 @@ RIVERBED_SCENARIOS = {
 # UI Labels
 SWITCH_LABELS = {
     "groundwater": "Groundwater Extraction (Subsidence)",
-    "riverbed": "Sand Mining (Riverbed Level Incision)",
-    "riverbed_disabled": "Sand Mining (Riverbed Level Incision) - {} (requires groundwater extraction)"
+    "riverbed": "Sediment Starvation (Riverbed Level Incision)",
+    "riverbed_disabled": "Sediment Starvation (Riverbed Level Incision) - {} (requires groundwater extraction)"
 }
 
 DEFAULT_TEXT = {
@@ -56,7 +59,7 @@ DEFAULT_TEXT = {
 }
 
 zoom = solara.reactive(8)
-center = solara.reactive((10.8, 106.7))  # Mekong Delta coordinates
+center = solara.reactive((10, 105.7))  # Mekong Delta coordinates
 
 # Reactive variables for scenario selection
 climate_rcp = solara.reactive("RCP 4.5")
@@ -64,71 +67,131 @@ year = solara.reactive("2030")
 subsidence_enabled = solara.reactive(False)
 riverbed_enabled = solara.reactive(False)
 
-# Base path for scenario data
-BASE_PATH = r"C:\Users\athanasi\Project_files\1_Projects_SITO\IDP\Data\salinity_mekong\scenarios"
+# Map instance to track across reactive updates
+map_instance = solara.reactive(None)
 
-def get_scenario_file_path():
-    """Generate the file path based on current scenario selections."""
-    rcp_code = "45" if climate_rcp.value == RCP_OPTIONS[0] else "85"
+# Loading state to track when map is updating
+is_updating = solara.reactive(False)
+
+# Function to generate Cloud Optimized GeoTIFF URL based on scenario selection
+def get_cog_url(rcp, year_val, subsidence, riverbed):
+    """
+    Generate the COG URL based on scenario parameters.
     
-    # Determine scenario folder based on enabled options
-    if subsidence_enabled.value and riverbed_enabled.value:
-        # Both subsidence and riverbed - only cc45sm2rb1y is available
-        if rcp_code == "45":
-            scenario_folder = "cc45sm2rb1y"
-        else:
-            # RCP 8.5 combination not available, fallback to subsidence only
-            scenario_folder = "cc85sb2y"
-    elif subsidence_enabled.value:
-        # Only subsidence
-        if rcp_code == "45":
-            scenario_folder = "cc45sm2y"  # M2 scenario
-        else:
-            scenario_folder = "cc85sb2y"  # B2 scenario
-    else:
-        # Only climate change (no anthropogenic changes)
-        scenario_folder = f"cc{rcp_code}y"
+    Args:
+        rcp: "RCP 4.5" or "RCP 8.5"
+        year_val: "2030", "2040", or "2050"
+        subsidence: Boolean indicating if subsidence is enabled
+        riverbed: Boolean indicating if riverbed erosion is enabled
     
-    # Use online file URL format for now
-    file_url = f"https://storage.cloud.google.com/dgds-data-public/gca/salinity/{scenario_folder}/{year.value}.tif"
-    return file_url
+    Returns:
+        String URL for the corresponding COG file
+    """
+    # Base URL pattern
+    base_url = "https://storage.googleapis.com/dgds-data-public/gca/salinity/cogs"
+    
+    # Map RCP to climate code
+    climate_code = "cc45" if rcp == "RCP 4.5" else "cc85"
+    
+    # Build scenario code based on enabled features
+    scenario_parts = [climate_code]
+    
+    if subsidence and riverbed:
+        # Both subsidence and riverbed enabled
+        if rcp == "RCP 4.5":
+            scenario_parts.append("sm2rb1")  # M2 + RB1 for RCP 4.5
+        else:
+            scenario_parts.append("sb2rb3")  # B2 + RB3 for RCP 8.5
+    elif subsidence:
+        # Only subsidence enabled
+        if rcp == "RCP 4.5":
+            scenario_parts.append("sm2")  # M2 for RCP 4.5
+        else:
+            scenario_parts.append("sb2")  # B2 for RCP 8.5
+    
+    # Add year indicator
+    scenario_parts.append("y")
+    
+    scenario_code = "".join(scenario_parts)
+    
+    return f"{base_url}/{scenario_code}/{year_val}.tif"
+
 
 class Map(leafmap.Map):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Add what you want below
         self.add_basemap("Esri.WorldImagery")
-        self.scenario_layer = None
-    
-    def update_scenario_layer(self, file_url):
-        """Update the scenario layer with a new COG file."""
-        # Remove existing scenario layer if it exists
-        if self.scenario_layer is not None:
-            try:
-                # Remove layer by name
-                layers_to_remove = [layer for layer in self.layers if hasattr(layer, 'name') and layer.name == "Salinity Scenario"]
-                for layer in layers_to_remove:
-                    self.remove_layer(layer)
-            except Exception as e:
-                print(f"Error removing layer: {e}")
+        self.current_salinity_layer = None  # Track current salinity layer
+        self.salinity_layers = []  # Track all salinity layers for cleanup
         
-        # Add new layer if file URL is provided
-        if file_url:
-            try:
-                # Try to add COG layer using the online URL
-                self.add_cog_layer(
-                    url=file_url,
-                    name="Salinity Scenario",
-                    opacity=0.7,
-                    zoom_to_layer=False
-                )
-                self.scenario_layer = "Salinity Scenario"
-                print(f"Successfully loaded COG: {file_url}")
-            except Exception as e:
-                print(f"Error loading COG: {e}")
-                self.scenario_layer = None
+    def update_salinity_layer(self, rcp, year_val, subsidence, riverbed):
+        """Update the salinity COG layer based on scenario parameters"""
+        # Remove all existing salinity layers
+        self.clear_salinity_layers()
+        
+        # Generate new COG URL
+        cog_url = get_cog_url(rcp, year_val, subsidence, riverbed)
+        
+        # Create layer name based on scenario
+        scenario_desc = f"{rcp} - {year_val}"
+        if subsidence and riverbed:
+            scenario_desc += " (Subsidence + Riverbed)"
+        elif subsidence:
+            scenario_desc += " (Subsidence)"
         else:
-            self.scenario_layer = None
+            scenario_desc += " (Climate only)"
+        
+        layer_name = f"Salinity: {scenario_desc}"
+        
+        # Add new COG layer
+        try:
+            # Use add_cog_layer with custom colormap
+            self.add_cog_layer(
+                url=cog_url,
+                name=layer_name,
+                palette="Reds",
+                opacity=0.7,
+                zoom_to_layer=False
+            )
+            self.current_salinity_layer = layer_name
+            self.salinity_layers.append(layer_name)
+            print(f"Added COG layer: {layer_name}")
+            print(f"URL: {cog_url}")
+        except Exception as e:
+            print(f"Error with add_cog_layer: {e}")
+    
+    def clear_salinity_layers(self):
+        """Remove all salinity layers from the map"""
+        # Try to remove layers by name
+        for layer_name in self.salinity_layers[:]:  # Copy list to avoid modification during iteration
+            try:
+                self.remove_layer(layer_name)
+                self.salinity_layers.remove(layer_name)
+                print(f"Removed layer: {layer_name}")
+            except Exception as e:
+                print(f"Could not remove layer {layer_name}: {e}")
+        
+        # Alternative approach: remove all layers that contain "Salinity" in the name
+        try:
+            if hasattr(self, 'layers') and self.layers:
+                layers_to_remove = []
+                for layer in self.layers:
+                    if hasattr(layer, 'name') and layer.name and 'Salinity' in layer.name:
+                        layers_to_remove.append(layer)
+                
+                for layer in layers_to_remove:
+                    try:
+                        self.remove_layer(layer)
+                        print(f"Removed layer object: {layer.name if hasattr(layer, 'name') else 'unknown'}")
+                    except Exception as e:
+                        print(f"Error removing layer object: {e}")
+        except Exception as e:
+            print(f"Error in alternative layer removal: {e}")
+        
+        # Clear tracking variables
+        self.current_salinity_layer = None
+        self.salinity_layers = []
 
 @solara.component
 def Page():
@@ -151,25 +214,48 @@ def Page():
         
         return " ".join(descriptions)
     
-    # Create a persistent map instance
-    map_instance = solara.use_memo(lambda: Map(
-        zoom=zoom.value,
-        center=center.value,
-        scroll_wheel_zoom=True,
-        toolbar_ctrl=False,
-        data_ctrl=False,
-    ), [])
+    # Create map instance if it doesn't exist
+    if map_instance.value is None:
+        new_map = Map(
+            zoom=zoom.value,
+            center=center.value,
+            height="600px",
+            width="100%"
+        )
+        # Add initial salinity layer
+        new_map.update_salinity_layer(
+            climate_rcp.value,
+            year.value, 
+            subsidence_enabled.value,
+            riverbed_enabled.value
+        )
+        map_instance.set(new_map)
     
-    # Effect to update COG layer when scenario changes
-    def update_cog_layer():
-        file_url = get_scenario_file_path()
-        if map_instance and hasattr(map_instance, 'update_scenario_layer'):
-            map_instance.update_scenario_layer(file_url)
+    # Update map when any scenario parameter changes
+    def update_map_layer():
+        if map_instance.value:
+            is_updating.set(True)  # Show loading
+            try:
+                map_instance.value.update_salinity_layer(
+                    climate_rcp.value,
+                    year.value,
+                    subsidence_enabled.value,
+                    riverbed_enabled.value
+                )
+            finally:
+                is_updating.set(False)  # Hide loading
     
-    solara.use_effect(update_cog_layer, [climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value])
+    # Watch for changes in reactive variables
+    solara.use_effect(update_map_layer, [climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value])
     
     with solara.Column():
         solara.Markdown("# Salinity Intrusion Dashboard for Mekong Delta")
+        
+        # Show loading indicator when map is updating
+        if is_updating.value:
+            with solara.Row():
+                solara.Text("Updating map...")
+                solara.ProgressLinear(True)  # Indeterminate progress
         
         # Main layout: Controls on left, Map on right
         with solara.Row():
@@ -244,12 +330,6 @@ def Page():
             
             # Right column for map - 1/2 of screen
             with solara.Column(style={"flex": "1"}):
-                # Use the persistent map instance
-                Map.element(
-                    zoom=zoom.value,
-                    on_zoom=zoom.set,
-                    center=center.value,
-                    on_center=center.set,
-                    height="600px",
-                    width="100%"
-                )
+                # Use the map instance
+                if map_instance.value:
+                    solara.display(map_instance.value)

@@ -84,6 +84,9 @@ map_instance = solara.reactive(None)
 # Loading state to track when map is updating
 is_updating = solara.reactive(False)
 
+# Error message state for GUI alerts
+error_message = solara.reactive(None)
+
 # Function to generate WMS configuration based on scenario selection
 def get_wms_config(rcp, year_val, subsidence, riverbed):
     """
@@ -160,8 +163,8 @@ class Map(leafmap.Map):
         layer_name = f"Salinity: {scenario_desc}"
         
         # Add new WMS layer
+
         if wms_config is not None:
-            # Use add_wms_layer instead of add_cog_layer
             self.add_wms_layer(
                 url=wms_config['url'],
                 layers=wms_config['layer'],
@@ -176,8 +179,9 @@ class Map(leafmap.Map):
             print(f"Added WMS layer: {layer_name}")
             print(f"URL: {wms_config['url']}")
             print(f"Layer: {wms_config['layer']}")
+            error_message.set(None)
         else:
-            print("Layer is not available")
+            error_message.set("Layer is not available for the selected scenario.")
             self.clear_salinity_layers()
             
     
@@ -270,18 +274,18 @@ def Page():
     
     with solara.Column():
         solara.Markdown("# Salinity Intrusion Dashboard for Mekong Delta")
-        
+
         # Show loading indicator when map is updating
         if is_updating.value:
             with solara.Row():
                 solara.Text("Updating map...")
                 solara.ProgressLinear(True)  # Indeterminate progress
-        
+
         # Main layout: Controls on left, Map on right
         with solara.Row():
             # Left column for controls - 1/2 of screen
             with solara.Column(style={"width": "50%", "padding": "20px"}):
-                
+                # ...existing code...
                 # Climate Change Section
                 solara.Markdown("## Climate Change")
                 
@@ -353,3 +357,7 @@ def Page():
                 # Use the map instance
                 if map_instance.value:
                     solara.display(map_instance.value)
+                    
+                # Show error alert if error_message is set
+        if error_message.value:
+            solara.Error(error_message.value)

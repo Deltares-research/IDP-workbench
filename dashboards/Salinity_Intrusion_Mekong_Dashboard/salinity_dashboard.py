@@ -1,9 +1,14 @@
 import solara
 import leafmap
-import os
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from matplotlib.colors import LinearSegmentedColormap
+from pystac_client import Client
+
+# Open catalog
+catalog = Client.open(
+    "https://storage.googleapis.com/gca-data-public/gca/gca-stac-v7/catalog.json"
+)
+# Choose a collection
+collection_id = "Salinity" 
+collection = catalog.get_collection(collection_id)
 
 # Configuration variables for input options
 RCP_OPTIONS = ["RCP 4.5", "RCP 8.5"]
@@ -13,11 +18,13 @@ YEAR_OPTIONS = ["2030", "2040", "2050"]
 CLIMATE_SCENARIOS = {
     "RCP 4.5": {
         "name": "Moderate scenario",
-        "description": "**Moderate scenario (1.5–2°C global temperature rise)**: Effects of sea level rise and upstream discharge anomalies under moderate warming conditions."
+        "description": "**Moderate scenario (1.5–2°C global temperature rise)**: Effects of sea level rise and upstream discharge anomalies under moderate warming conditions.",
+        "scenario_str": "cc45"
     },
     "RCP 8.5": {
         "name": "Extreme scenario", 
-        "description": "**Extreme scenario (3–4°C global temperature rise)**: Effects of sea level rise and upstream discharge anomalies under higher warming conditions."
+        "description": "**Extreme scenario (3–4°C global temperature rise)**: Effects of sea level rise and upstream discharge anomalies under higher warming conditions.",
+        "scenario_str": "cc85"
     }
 }
 
@@ -25,12 +32,14 @@ GROUNDWATER_SCENARIOS = {
     "RCP 4.5": {
         "code": "M2",
         "name": "M2 scenario",
-        "description": "**M2 Groundwater Extraction Scenario**: 5% annual reduction in groundwater extraction leading to stable 50% of 2018 extraction volume, reflecting rising awareness of consequences. Results in reduced land subsidence due to aquifer-system compaction."
+        "description": "**M2 Groundwater Extraction Scenario**: 5% annual reduction in groundwater extraction leading to stable 50% of 2018 extraction volume, reflecting rising awareness of consequences. Results in reduced land subsidence due to aquifer-system compaction.",
+        "scenario_str": "sm2"
     },
     "RCP 8.5": {
         "code": "B2", 
         "name": "B2 scenario",
-        "description": "**B2 Groundwater Extraction Scenario**: Business-as-usual with 4% annual increase in groundwater extraction (similar to highest rates in last 25 years), leading to continued land subsidence due to aquifer-system compaction."
+        "description": "**B2 Groundwater Extraction Scenario**: Business-as-usual with 4% annual increase in groundwater extraction (similar to highest rates in last 25 years), leading to continued land subsidence due to aquifer-system compaction.",
+        "scenario_str": "sb2"  
     }
 }
 
@@ -38,12 +47,14 @@ RIVERBED_SCENARIOS = {
     "RCP 4.5": {
         "code": "RB1",
         "name": "RB1 scenario",
-        "description": "**RB1 Riverbed Scenario**: Significantly lower erosion rate (one-third of past 20 years) until 2040, motivated by rising awareness, shortage of erodible material, and potential policy changes. Accounts for 1 G m³ sand demand until 2040."
+        "description": "**RB1 Riverbed Scenario**: Significantly lower erosion rate (one-third of past 20 years) until 2040, motivated by rising awareness, shortage of erodible material, and potential policy changes. Accounts for 1 G m³ sand demand until 2040.",
+        "scenario_str": "rb1"      
     },
     "RCP 8.5": {
         "code": "RB3",
         "name": "RB3 scenario", 
-        "description": "**RB3 Riverbed Scenario**: Business-as-usual with identical erosion rates as past 20 years. The estuarine system continues deepening 2-3m (losing ~2-3 G m³) due to sediment starvation from upstream trapping and downstream sand mining."
+        "description": "**RB3 Riverbed Scenario**: Business-as-usual with identical erosion rates as past 20 years. The estuarine system continues deepening 2-3m (losing ~2-3 G m³) due to sediment starvation from upstream trapping and downstream sand mining.",
+        "scenario_str": "rb3"      
     }
 }
 
@@ -73,10 +84,10 @@ map_instance = solara.reactive(None)
 # Loading state to track when map is updating
 is_updating = solara.reactive(False)
 
-# Function to generate Cloud Optimized GeoTIFF URL based on scenario selection
-def get_cog_url(rcp, year_val, subsidence, riverbed):
+# Function to generate WMS configuration based on scenario selection
+def get_wms_config(rcp, year_val, subsidence, riverbed):
     """
-    Generate the COG URL based on scenario parameters.
+    Generate the WMS configuration based on scenario parameters.
     
     Args:
         rcp: "RCP 4.5" or "RCP 8.5"
@@ -85,36 +96,40 @@ def get_cog_url(rcp, year_val, subsidence, riverbed):
         riverbed: Boolean indicating if riverbed erosion is enabled
     
     Returns:
-        String URL for the corresponding COG file
+        Dictionary with 'url' and 'layer' keys for the WMS configuration
     """
-    # Base URL pattern
-    base_url = "https://storage.googleapis.com/dgds-data-public/gca/salinity/cogs"
-    
-    # Map RCP to climate code
-    climate_code = "cc45" if rcp == "RCP 4.5" else "cc85"
-    
-    # Build scenario code based on enabled features
-    scenario_parts = [climate_code]
-    
+    # Map RCP to code
+    rcp_code = "cc45" if rcp == "RCP 4.5" else "cc85"
+    year_str = str(year_val)
+
+    # Get scenario codes
+    subs_code = GROUNDWATER_SCENARIOS[rcp]["scenario_str"] if subsidence else None
+    riverbed_code = RIVERBED_SCENARIOS[rcp]["scenario_str"] if riverbed and subsidence else None
+
+    # Build folder and filename
     if subsidence and riverbed:
-        # Both subsidence and riverbed enabled
-        if rcp == "RCP 4.5":
-            scenario_parts.append("sm2rb1")  # M2 + RB1 for RCP 4.5
-        else:
-            scenario_parts.append("sb2rb3")  # B2 + RB3 for RCP 8.5
+        folder = f"{rcp_code}{subs_code}{riverbed_code}y"
     elif subsidence:
-        # Only subsidence enabled
-        if rcp == "RCP 4.5":
-            scenario_parts.append("sm2")  # M2 for RCP 4.5
-        else:
-            scenario_parts.append("sb2")  # B2 for RCP 8.5
+        folder = f"{rcp_code}{subs_code}y"
+    else:
+        folder = f"{rcp_code}y"
     
-    # Add year indicator
-    scenario_parts.append("y")
-    
-    scenario_code = "".join(scenario_parts)
-    
-    return f"{base_url}/{scenario_code}/{year_val}.tif"
+    filename = f"{year_str}.tif"
+
+    item_id = f"{folder}/{filename}"
+    try:
+        item = collection.get_item(item_id)
+        print(f"Getting STAC item: {item_id}")
+        visual_asset = item.assets.get("visual")
+
+        base_config = {
+            "url": visual_asset.href,
+            "layer": visual_asset.title
+        }
+    except Exception as e:
+        print(f"Error getting STAC item {item_id}")
+        base_config = None
+    return base_config
 
 
 class Map(leafmap.Map):
@@ -126,12 +141,12 @@ class Map(leafmap.Map):
         self.salinity_layers = []  # Track all salinity layers for cleanup
         
     def update_salinity_layer(self, rcp, year_val, subsidence, riverbed):
-        """Update the salinity COG layer based on scenario parameters"""
+        """Update the salinity WMS layer based on scenario parameters"""
         # Remove all existing salinity layers
         self.clear_salinity_layers()
         
-        # Generate new COG URL
-        cog_url = get_cog_url(rcp, year_val, subsidence, riverbed)
+        # Generate new WMS configuration
+        wms_config = get_wms_config(rcp, year_val, subsidence, riverbed)
         
         # Create layer name based on scenario
         scenario_desc = f"{rcp} - {year_val}"
@@ -144,22 +159,27 @@ class Map(leafmap.Map):
         
         layer_name = f"Salinity: {scenario_desc}"
         
-        # Add new COG layer
-        try:
-            # Use add_cog_layer with custom colormap
-            self.add_cog_layer(
-                url=cog_url,
+        # Add new WMS layer
+        if wms_config is not None:
+            # Use add_wms_layer instead of add_cog_layer
+            self.add_wms_layer(
+                url=wms_config['url'],
+                layers=wms_config['layer'],
                 name=layer_name,
-                palette="Reds",
+                format="image/png",
+                transparent=True,
                 opacity=0.7,
-                zoom_to_layer=False
+                attribution="Deltares IDP",
             )
             self.current_salinity_layer = layer_name
             self.salinity_layers.append(layer_name)
-            print(f"Added COG layer: {layer_name}")
-            print(f"URL: {cog_url}")
-        except Exception as e:
-            print(f"Error with add_cog_layer: {e}")
+            print(f"Added WMS layer: {layer_name}")
+            print(f"URL: {wms_config['url']}")
+            print(f"Layer: {wms_config['layer']}")
+        else:
+            print("Layer is not available")
+            self.clear_salinity_layers()
+            
     
     def clear_salinity_layers(self):
         """Remove all salinity layers from the map"""
@@ -222,7 +242,7 @@ def Page():
             height="600px",
             width="100%"
         )
-        # Add initial salinity layer
+        # Add initial salinity layer using WMS
         new_map.update_salinity_layer(
             climate_rcp.value,
             year.value, 

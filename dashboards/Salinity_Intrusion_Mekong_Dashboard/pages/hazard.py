@@ -24,8 +24,12 @@ year = solara.reactive("2030")
 subsidence_enabled = solara.reactive(False)
 riverbed_enabled = solara.reactive(False)
 
+
 # Map instance to track across reactive updates
 map_instance = solara.reactive(None)
+
+# Reactive legend URL for WMS colorbar
+legend_url = solara.reactive(None)
 
 # Loading state to track when map is updating
 is_updating = solara.reactive(False)
@@ -126,6 +130,8 @@ class Map(leafmap.Map):
             print(f"URL: {wms_config['url']}")
             print(f"Layer: {wms_config['layer']}")
             error_message.set(None)
+            # Set reactive legend URL for colorbar
+            legend_url.set(f"{wms_config['url'].split('?')[0]}?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&LAYER={wms_config['layer']}")
         else:
             error_message.set("Layer is not available for the selected scenario.")
             self.clear_salinity_layers()
@@ -302,7 +308,8 @@ def Page():
                 # Use the map instance
                 if map_instance.value:
                     solara.display(map_instance.value)
-                    
-                # Show error alert if error_message is set
+            with solara.Column(style={"width": "80px", "flex": "none", "padding-left": "10px"}):
+                if legend_url.value:
+                    solara.Image(legend_url.value)
         if error_message.value:
             solara.Error(error_message.value)

@@ -22,11 +22,12 @@ geo = Geoserver(
 )
 
 # --- Configuration ---
-WORKSPACE = "idp"
+WORKSPACE = "salinity"
 VARIABLES = ["salinity"]
-SCENARIOS = ["cc45y", "cc85y", "cc85sb2y", "cc45sm2y", "cc45sm2rb1y"]
-YEARS = ["2030", "2040", "2050"]
+SCENARIOS = ["baseline", "cc45y", "cc85y", "cc85sb2y", "cc45sm2y", "cc45sm2rb1y"]
+YEARS = ["2018", "2030", "2040", "2050"]
 LAYER_STYLE = "salinity"
+PROBABILITY = "p50"
 
 # --- Helper function to set style ---
 def set_default_style(base_url, workspace, layer_name, style_name, user, pwd):
@@ -72,8 +73,8 @@ for var in VARIABLES:
         for year in YEARS:
             print(f"    Year: {year}")
 
-            layer_name = f"{scen}_{year}"
-            tif_path = f"/opt/gca-data-public/gca/{var}/{scen}/{year}.tif"
+            layer_name = f"{scen}_{PROBABILITY}_{year}"
+            tif_path = f"/opt/gca-data-public/gca/{var}/{scen}/{PROBABILITY}_{year}.tif"
 
             try:
                 # Optional: delete existing layer/store if needed

@@ -24,7 +24,7 @@ geo = Geoserver(
 # --- Configuration ---
 WORKSPACE = "salinity"
 VARIABLES = ["salinity"]
-SCENARIOS = ["baseline", "cc45y", "cc85y", "cc85sb2y", "cc45sm2y", "cc45sm2rb1y"]
+SCENARIOS = ["baseline", "cc45y", "cc85y", "cc85sb2y", "cc45sm2y", "cc45sm2rb1y", "cc85sb2rb3y"]
 YEARS = ["2018", "2030", "2040", "2050"]
 LAYER_STYLE = "salinity"
 PROBABILITY = "p50"

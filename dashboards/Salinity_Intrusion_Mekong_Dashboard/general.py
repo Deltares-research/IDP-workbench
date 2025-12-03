@@ -1,12 +1,17 @@
 from pystac_client import Client
+import geopandas as gpd
+import gcsfs
+
+# Create GCS filesystem (anonymous for public bucket)
+fs = gcsfs.GCSFileSystem(anonymous=True)
 
 # Open catalog
 catalog = Client.open(
-    "https://storage.googleapis.com/gca-data-public/gca/gca-stac-v7/catalog.json"
+    "https://storage.googleapis.com/gca-data-public/gca/gca-stac-4/catalog.json"
 )
 # Choose a collection
-collection_id = "Salinity" 
-collection = catalog.get_collection(collection_id)
+sal_collection = catalog.get_collection("Salinity" )
+sal_incr_collection = catalog.get_collection("Salinity Increase" )
 
 # Configuration variables for input options
 RCP_OPTIONS = ["RCP 4.5", "RCP 8.5"]
@@ -66,3 +71,59 @@ SWITCH_LABELS = {
 DEFAULT_TEXT = {
     "no_anthropogenic": "No anthropogenic changes selected. Climate-only scenario considers sea level rise and discharge variations without human-induced modifications."
 }
+
+
+# Function to generate WMS configuration based on scenario selection
+def get_scenario(rcp, year_val, subsidence, riverbed):
+    """
+    Generate the WMS configuration based on scenario parameters.
+    
+    Args:
+        rcp: "RCP 4.5" or "RCP 8.5"
+        year_val: "2030", "2040", or "2050"
+        subsidence: Boolean indicating if subsidence is enabled
+        riverbed: Boolean indicating if riverbed erosion is enabled
+    
+    Returns:
+        Dictionary with 'url' and 'layer' keys for the WMS configuration
+    """
+    # Map RCP to code
+    year_str = str(year_val)
+    rcp_code = CLIMATE_SCENARIOS[rcp]["scenario_str"]
+    # Get scenario codes
+    subs_code = GROUNDWATER_SCENARIOS[rcp]["scenario_str"] if subsidence else None
+    riverbed_code = RIVERBED_SCENARIOS[rcp]["scenario_str"] if riverbed and subsidence else None
+
+    # Build folder and filename
+    if subsidence and riverbed:
+        folder = f"{rcp_code}{subs_code}{riverbed_code}y"
+    elif subsidence:
+        folder = f"{rcp_code}{subs_code}y"
+    else:
+        folder = f"{rcp_code}y"
+    
+    filename = f"p50_{year_str}.tif"
+
+    item_id = f"{folder}/{filename}"
+    
+    
+    try:
+        # Get STAC item
+        item = sal_incr_collection.get_item(item_id)
+        print(f"Getting STAC item: {item_id}")
+        # Get geoserver asset
+        visual_asset = item.assets.get("visual")
+        # Get isoline
+        isoline_url = item.assets.get("vector").href.replace('https://storage.googleapis.com/', '')
+        isoline_url = f"gcs://{isoline_url}"
+        isoline = gpd.read_parquet(isoline_url, filesystem=fs)
+        config = {
+            "url": visual_asset.href,
+            "layer": visual_asset.title,
+            "isoline": isoline
+        }
+    except Exception as e:
+        print(f"Error getting STAC item {item_id}: {e}")
+        config = None
+        
+    return config

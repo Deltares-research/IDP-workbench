@@ -73,57 +73,56 @@ DEFAULT_TEXT = {
 }
 
 
-# Function to generate WMS configuration based on scenario selection
-def get_scenario(rcp, year_val, subsidence, riverbed, show_isoline=True):
-    """
-    Generate the WMS configuration based on scenario parameters.
-    
-    Args:
-        rcp: "RCP 4.5" or "RCP 8.5"
-        year_val: "2030", "2040", or "2050"
-        subsidence: Boolean indicating if subsidence is enabled
-        riverbed: Boolean indicating if riverbed erosion is enabled
-        show_isoline: Boolean, whether to fetch isoline
-    
-    Returns:
-        Dictionary with 'url', 'layer', and optionally 'isoline' keys for the WMS configuration
-    """
-    # Map RCP to code
+
+# Utility to build item_id for scenario
+def _get_item_id(rcp, year_val, subsidence, riverbed):
     year_str = str(year_val)
     rcp_code = CLIMATE_SCENARIOS[rcp]["scenario_str"]
-    # Get scenario codes
     subs_code = GROUNDWATER_SCENARIOS[rcp]["scenario_str"] if subsidence else None
     riverbed_code = RIVERBED_SCENARIOS[rcp]["scenario_str"] if riverbed and subsidence else None
-
-    # Build folder and filename
     if subsidence and riverbed:
         folder = f"{rcp_code}{subs_code}{riverbed_code}y"
     elif subsidence:
         folder = f"{rcp_code}{subs_code}y"
     else:
         folder = f"{rcp_code}y"
-    
     filename = f"p50_{year_str}.tif"
+    return f"{folder}/{filename}"
 
-    item_id = f"{folder}/{filename}"
-    
+# Get WMS config dict for scenario
+def get_wms_config(rcp, year_val, subsidence, riverbed):
+    item_id = _get_item_id(rcp, year_val, subsidence, riverbed)
     try:
-        # Get STAC item
         item = sal_incr_collection.get_item(item_id)
-        print(f"Getting STAC item: {item_id}")
-        # Get geoserver asset
         visual_asset = item.assets.get("visual")
+        url = visual_asset.href
+        layer = visual_asset.title
+        # Compose legend_url for WMS GetLegendGraphic
+        legend_url = None
+        if url and layer:
+            base_url = url.split('?')[0]
+            legend_url = f"{base_url}?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&LAYER={layer}"
         config = {
-            "url": visual_asset.href,
-            "layer": visual_asset.title
+            "url": url,
+            "layer": layer,
+            "legend_url": legend_url
         }
-        if show_isoline:
-            isoline_url = item.assets.get("vector").href.replace('https://storage.googleapis.com/', '')
+    except Exception as e:
+        print(f"Error getting WMS config for {item_id}: {e}")
+        config = None
+    return config
+
+# Get isoline GeoDataFrame for scenario
+def get_isoline_gdf(rcp, year_val, subsidence, riverbed):
+    item_id = _get_item_id(rcp, year_val, subsidence, riverbed)
+    try:
+        item = sal_incr_collection.get_item(item_id)
+        vector_asset = item.assets.get("vector")
+        if vector_asset:
+            isoline_url = vector_asset.href.replace('https://storage.googleapis.com/', '')
             isoline_url = f"gcs://{isoline_url}"
             isoline = gpd.read_parquet(isoline_url, filesystem=fs)
-            config["isoline"] = isoline
+            return isoline
     except Exception as e:
-        print(f"Error getting STAC item {item_id}: {e}")
-        config = None
-        
-    return config
+        print(f"Error getting isoline for {item_id}: {e}")
+    return None

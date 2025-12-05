@@ -5,7 +5,8 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from general import (
-    get_scenario,
+    get_wms_config,
+    get_isoline_gdf,
     RCP_OPTIONS,
     YEAR_OPTIONS,
     CLIMATE_SCENARIOS,
@@ -53,93 +54,88 @@ class Map(leafmap.Map):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.add_basemap("Esri.WorldImagery")
-        self.current_salinity_layer = None  # Track current salinity layer
-        self.current_isoline_layer = None   # Track current isoline layer
+        self._current_wms_layers = []  # Store names, not objects
+        self._current_gdf_layers = []
+        self.legend_url = None
 
-    def set_wms_layer(self, rcp, year_val, subsidence, riverbed):
-        config = get_scenario(rcp, year_val, subsidence, riverbed, show_isoline=False)
-        scenario_desc = f"{rcp} - {year_val}"
-        if subsidence and riverbed:
-            scenario_desc += " (Subsidence + Riverbed)"
-        elif subsidence:
-            scenario_desc += " (Subsidence)"
-        else:
-            scenario_desc += " (Climate only)"
-        layer_name = f"Salinity Increase: {scenario_desc}"
-        self.clear_wms_layer()
+    def add_wms_layer_general(self, config, layer_name=None, opacity_value=0.8):
+        """
+        Add a WMS layer using a config dict (from get_scenario or similar).
+        Expects config to have at least: url, layer, legend_url (optional).
+        """
+        self.clear_wms_layers()
         if config is not None:
+            name = layer_name or config.get('layer', 'WMS Layer')
             self.add_wms_layer(
                 url=config['url'],
                 layers=config['layer'],
-                name=layer_name,
+                name=name,
                 format="image/png",
                 transparent=True,
-                opacity=opacity.value,
-                attribution="Deltares IDP",
+                opacity=opacity_value,
+                attribution=config.get('attribution', "Deltares IDP"),
             )
-            self.current_salinity_layer = layer_name
-            legend_url.set(f"{config['url'].split('?')[0]}?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&LAYER={config['layer']}")
+            self._current_wms_layers = [name]
+            self.legend_url = config.get('legend_url')
         else:
-            self.current_salinity_layer = None
-            legend_url.set(None)
+            self._current_wms_layers = []
+            self.legend_url = None
 
-    def set_isoline_layer(self, rcp, year_val, subsidence, riverbed, show_isoline):
-        config = get_scenario(rcp, year_val, subsidence, riverbed, show_isoline=show_isoline)
-        scenario_desc = f"{rcp} - {year_val}"
-        if subsidence and riverbed:
-            scenario_desc += " (Subsidence + Riverbed)"
-        elif subsidence:
-            scenario_desc += " (Subsidence)"
-        else:
-            scenario_desc += " (Climate only)"
-        layer_name = f"Salinity Increase: {scenario_desc} 2 PSU Isoline"
-        self.clear_isoline_layer()
-        if show_isoline and config is not None and 'isoline' in config:
+    def add_gdf_layer_general(self, gdf, layer_name="GDF Layer", style=None, hover_style=None, info_mode=None):
+        """
+        Add a GeoDataFrame layer in a general way.
+        """
+        self.clear_gdf_layers()
+        if gdf is not None:
             self.add_gdf(
-                config['isoline'],
+                gdf,
                 layer_name=layer_name,
-                info_mode=None,
-                style=ISOLINE_STYLE,
-                hover_style=ISOLINE_STYLE
+                info_mode=info_mode,
+                style=style,
+                hover_style=hover_style
             )
-            self.current_isoline_layer = layer_name
+            self._current_gdf_layers = [layer_name]
         else:
-            self.current_isoline_layer = None
+            self._current_gdf_layers = []
 
-    def clear_wms_layer(self):
+    def clear_wms_layers(self):
         if hasattr(self, 'layers') and self.layers:
             layers_to_remove = []
             for layer in self.layers:
-                if hasattr(layer, 'name') and layer.name and 'Salinity Increase' in layer.name and '2 PSU Isoline' not in layer.name:
+                if hasattr(layer, 'name') and layer.name and 'WMS' in layer.name or (hasattr(layer, 'source') and getattr(layer, 'source', None) == 'wms'):
                     layers_to_remove.append(layer)
             for layer in layers_to_remove:
                 try:
                     self.remove_layer(layer)
                 except Exception as e:
                     print(f"Error removing WMS layer: {e}")
-        self.current_salinity_layer = None
+        self._current_wms_layers = []
+        self.legend_url = None
 
-    def clear_isoline_layer(self):
-        if hasattr(self, 'layers') and self.layers:
+    def clear_gdf_layers(self):
+        if hasattr(self, 'layers') and self.layers and self._current_gdf_layers:
             layers_to_remove = []
             for layer in self.layers:
-                if hasattr(layer, 'name') and layer.name and '2 PSU Isoline' in layer.name:
+                if hasattr(layer, 'name') and layer.name in self._current_gdf_layers:
                     layers_to_remove.append(layer)
             for layer in layers_to_remove:
                 try:
                     self.remove_layer(layer)
                 except Exception as e:
-                    print(f"Error removing isoline layer: {e}")
-        self.current_isoline_layer = None
+                    print(f"Error removing GDF layer: {e}")
+        self._current_gdf_layers = []
 
-    def set_salinity_opacity(self, opacity_value):
-        if hasattr(self, 'layers') and self.current_salinity_layer:
-            for layer in self.layers:
-                if hasattr(layer, 'name') and layer.name == self.current_salinity_layer:
-                    if hasattr(layer, 'opacity'):
-                        layer.opacity = opacity_value
-                    elif hasattr(layer, 'set_opacity'):
-                        layer.set_opacity(opacity_value)
+    def set_layer_opacity(self, opacity_value):
+        # Set opacity for all current WMS layers by name
+        if hasattr(self, 'layers') and self._current_wms_layers:
+            for map_layer in self.layers:
+                if hasattr(map_layer, 'name') and map_layer.name in self._current_wms_layers:
+                    if hasattr(map_layer, 'opacity'):
+                        map_layer.opacity = opacity_value
+                    elif hasattr(map_layer, 'set_opacity'):
+                        map_layer.set_opacity(opacity_value)
+
+
                         
 @solara.component
 def Page():
@@ -173,39 +169,44 @@ def Page():
             fullscreen_control=False,
             toolbar_control=False,
         )
-        new_map.set_wms_layer(
-            climate_rcp.value,
-            year.value,
-            subsidence_enabled.value,
-            riverbed_enabled.value
-        )
-        new_map.set_isoline_layer(
-            climate_rcp.value,
-            year.value,
-            subsidence_enabled.value,
-            riverbed_enabled.value,
-            show_isoline.value
-        )
+        # Get config for WMS
+        config = get_wms_config(climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value)
+        new_map.add_wms_layer_general(config, layer_name="Salinity WMS", opacity_value=opacity.value)
+        # Get isoline (if enabled)
+        if show_isoline.value:
+            isoline_gdf = get_isoline_gdf(climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value)
+            if isoline_gdf is not None:
+                new_map.add_gdf_layer_general(
+                    isoline_gdf,
+                    layer_name="2 PSU Isoline",
+                    style=ISOLINE_STYLE,
+                    hover_style=ISOLINE_STYLE
+                )
         map_instance.set(new_map)
+        # Set legend_url reactive
+        legend_url.set(new_map.legend_url)
 
     # Update map when any scenario parameter changes (not opacity)
     def update_map_layer():
         if map_instance.value:
             is_updating.set(True)  # Show loading
             try:
-                map_instance.value.set_wms_layer(
-                    climate_rcp.value,
-                    year.value,
-                    subsidence_enabled.value,
-                    riverbed_enabled.value
-                )
-                map_instance.value.set_isoline_layer(
-                    climate_rcp.value,
-                    year.value,
-                    subsidence_enabled.value,
-                    riverbed_enabled.value,
-                    show_isoline.value
-                )
+                # Update WMS layer
+                config = get_wms_config(climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value)
+                map_instance.value.add_wms_layer_general(config, layer_name="Salinity WMS", opacity_value=opacity.value)
+                # Update isoline layer
+                map_instance.value.clear_gdf_layers()
+                if show_isoline.value:
+                    isoline_gdf = get_isoline_gdf(climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value)
+                    if isoline_gdf is not None:
+                        map_instance.value.add_gdf_layer_general(
+                            isoline_gdf,
+                            layer_name="2 PSU Isoline",
+                            style=ISOLINE_STYLE,
+                            hover_style=ISOLINE_STYLE
+                        )
+                # Set legend_url reactive
+                legend_url.set(map_instance.value.legend_url)
             finally:
                 is_updating.set(False)  # Hide loading
     # Watch for changes in scenario (not opacity)
@@ -214,8 +215,9 @@ def Page():
     # Only update opacity when slider changes
     def update_opacity():
         if map_instance.value:
-            map_instance.value.set_salinity_opacity(opacity.value)
-    
+            map_instance.value.set_layer_opacity(opacity.value)
+            # Force Solara to re-render the map by updating the reactive value
+            map_instance.set(map_instance.value)
     solara.use_effect(update_opacity, [opacity.value])
     
     with solara.Column():
@@ -309,7 +311,6 @@ def Page():
                             min=0.0,
                             max=1.0,
                             step=0.01,
-                            # style={"width": "300px"}
                         )
             with solara.Column(style={"width": "120px", "flex": "none", "padding-left": "10px"}):
                 # Show Isoline toggle above the legend

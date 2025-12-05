@@ -74,7 +74,7 @@ DEFAULT_TEXT = {
 
 
 # Function to generate WMS configuration based on scenario selection
-def get_scenario(rcp, year_val, subsidence, riverbed):
+def get_scenario(rcp, year_val, subsidence, riverbed, show_isoline=True):
     """
     Generate the WMS configuration based on scenario parameters.
     
@@ -83,9 +83,10 @@ def get_scenario(rcp, year_val, subsidence, riverbed):
         year_val: "2030", "2040", or "2050"
         subsidence: Boolean indicating if subsidence is enabled
         riverbed: Boolean indicating if riverbed erosion is enabled
+        show_isoline: Boolean, whether to fetch isoline
     
     Returns:
-        Dictionary with 'url' and 'layer' keys for the WMS configuration
+        Dictionary with 'url', 'layer', and optionally 'isoline' keys for the WMS configuration
     """
     # Map RCP to code
     year_str = str(year_val)
@@ -106,22 +107,21 @@ def get_scenario(rcp, year_val, subsidence, riverbed):
 
     item_id = f"{folder}/{filename}"
     
-    
     try:
         # Get STAC item
         item = sal_incr_collection.get_item(item_id)
         print(f"Getting STAC item: {item_id}")
         # Get geoserver asset
         visual_asset = item.assets.get("visual")
-        # Get isoline
-        isoline_url = item.assets.get("vector").href.replace('https://storage.googleapis.com/', '')
-        isoline_url = f"gcs://{isoline_url}"
-        isoline = gpd.read_parquet(isoline_url, filesystem=fs)
         config = {
             "url": visual_asset.href,
-            "layer": visual_asset.title,
-            "isoline": isoline
+            "layer": visual_asset.title
         }
+        if show_isoline:
+            isoline_url = item.assets.get("vector").href.replace('https://storage.googleapis.com/', '')
+            isoline_url = f"gcs://{isoline_url}"
+            isoline = gpd.read_parquet(isoline_url, filesystem=fs)
+            config["isoline"] = isoline
     except Exception as e:
         print(f"Error getting STAC item {item_id}: {e}")
         config = None

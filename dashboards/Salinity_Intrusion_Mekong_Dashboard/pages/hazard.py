@@ -23,6 +23,7 @@ climate_rcp = solara.reactive("RCP 4.5")
 year = solara.reactive("2030")
 subsidence_enabled = solara.reactive(False)
 riverbed_enabled = solara.reactive(False)
+show_isoline = solara.reactive(False)
 
 
 # Map instance to track across reactive updates
@@ -49,22 +50,14 @@ ISOLINE_STYLE = {
 
 
 class Map(leafmap.Map):
-    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Add what you want below
         self.add_basemap("Esri.WorldImagery")
         self.current_salinity_layer = None  # Track current salinity layer
-        
-    def update_salinity_layer(self, rcp, year_val, subsidence, riverbed):
-        """Update the salinity WMS layer based on scenario parameters"""
-        # Remove all existing salinity layers
-        self.clear_salinity_layers()
-        
-        # Generate new WMS configuration
-        config = get_scenario(rcp, year_val, subsidence, riverbed)
-        
-        # Create layer name based on scenario
+        self.current_isoline_layer = None   # Track current isoline layer
+
+    def set_wms_layer(self, rcp, year_val, subsidence, riverbed):
+        config = get_scenario(rcp, year_val, subsidence, riverbed, show_isoline=False)
         scenario_desc = f"{rcp} - {year_val}"
         if subsidence and riverbed:
             scenario_desc += " (Subsidence + Riverbed)"
@@ -72,11 +65,9 @@ class Map(leafmap.Map):
             scenario_desc += " (Subsidence)"
         else:
             scenario_desc += " (Climate only)"
-        
         layer_name = f"Salinity Increase: {scenario_desc}"
-
+        self.clear_wms_layer()
         if config is not None:
-            # Add new WMS layer
             self.add_wms_layer(
                 url=config['url'],
                 layers=config['layer'],
@@ -87,48 +78,61 @@ class Map(leafmap.Map):
                 attribution="Deltares IDP",
             )
             self.current_salinity_layer = layer_name
-            print(f"Added WMS layer: {layer_name}")
+            legend_url.set(f"{config['url'].split('?')[0]}?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&LAYER={config['layer']}")
+        else:
+            self.current_salinity_layer = None
+            legend_url.set(None)
+
+    def set_isoline_layer(self, rcp, year_val, subsidence, riverbed, show_isoline):
+        config = get_scenario(rcp, year_val, subsidence, riverbed, show_isoline=show_isoline)
+        scenario_desc = f"{rcp} - {year_val}"
+        if subsidence and riverbed:
+            scenario_desc += " (Subsidence + Riverbed)"
+        elif subsidence:
+            scenario_desc += " (Subsidence)"
+        else:
+            scenario_desc += " (Climate only)"
+        layer_name = f"Salinity Increase: {scenario_desc} 2 PSU Isoline"
+        self.clear_isoline_layer()
+        if show_isoline and config is not None and 'isoline' in config:
             self.add_gdf(
                 config['isoline'],
-                layer_name=f"{layer_name} 2 PSU Isoline",
+                layer_name=layer_name,
                 info_mode=None,
                 style=ISOLINE_STYLE,
                 hover_style=ISOLINE_STYLE
             )
-            # print(f"URL: {config['url']}")
-            # print(f"Layer: {config['layer']}")
-            error_message.set(None)
-            # Set reactive legend URL for colorbar
-            legend_url.set(f"{config['url'].split('?')[0]}?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&LAYER={config['layer']}")
+            self.current_isoline_layer = layer_name
         else:
-            error_message.set("Layer is not available for the selected scenario.")
-            self.clear_salinity_layers()
-            
-    
-    def clear_salinity_layers(self):
-        """Remove all salinity layers from the map"""
+            self.current_isoline_layer = None
 
-        # Alternative approach: remove all layers that contain "Salinity" in the name
+    def clear_wms_layer(self):
         if hasattr(self, 'layers') and self.layers:
             layers_to_remove = []
             for layer in self.layers:
-                if hasattr(layer, 'name') and layer.name and 'Salinity' in layer.name:
+                if hasattr(layer, 'name') and layer.name and 'Salinity Increase' in layer.name and '2 PSU Isoline' not in layer.name:
                     layers_to_remove.append(layer)
-                    layers_to_remove.append(f"{layer} 2 PSU Isoline")
-            
             for layer in layers_to_remove:
                 try:
                     self.remove_layer(layer)
                 except Exception as e:
-                    print(f"Error removing layer object: {e}")
-        
-        # Clear tracking variables
+                    print(f"Error removing WMS layer: {e}")
         self.current_salinity_layer = None
-        self.salinity_layers = []
-    
+
+    def clear_isoline_layer(self):
+        if hasattr(self, 'layers') and self.layers:
+            layers_to_remove = []
+            for layer in self.layers:
+                if hasattr(layer, 'name') and layer.name and '2 PSU Isoline' in layer.name:
+                    layers_to_remove.append(layer)
+            for layer in layers_to_remove:
+                try:
+                    self.remove_layer(layer)
+                except Exception as e:
+                    print(f"Error removing isoline layer: {e}")
+        self.current_isoline_layer = None
+
     def set_salinity_opacity(self, opacity_value):
-        """Update opacity of the current salinity layer only"""
-        # Try to find the layer by name and set its opacity
         if hasattr(self, 'layers') and self.current_salinity_layer:
             for layer in self.layers:
                 if hasattr(layer, 'name') and layer.name == self.current_salinity_layer:
@@ -169,35 +173,49 @@ def Page():
             fullscreen_control=False,
             toolbar_control=False,
         )
-        # Add initial salinity layer using WMS
-        new_map.update_salinity_layer(
+        new_map.set_wms_layer(
             climate_rcp.value,
-            year.value, 
+            year.value,
             subsidence_enabled.value,
             riverbed_enabled.value
         )
+        new_map.set_isoline_layer(
+            climate_rcp.value,
+            year.value,
+            subsidence_enabled.value,
+            riverbed_enabled.value,
+            show_isoline.value
+        )
         map_instance.set(new_map)
-    
+
     # Update map when any scenario parameter changes (not opacity)
     def update_map_layer():
         if map_instance.value:
             is_updating.set(True)  # Show loading
             try:
-                map_instance.value.update_salinity_layer(
+                map_instance.value.set_wms_layer(
                     climate_rcp.value,
                     year.value,
                     subsidence_enabled.value,
                     riverbed_enabled.value
                 )
+                map_instance.value.set_isoline_layer(
+                    climate_rcp.value,
+                    year.value,
+                    subsidence_enabled.value,
+                    riverbed_enabled.value,
+                    show_isoline.value
+                )
             finally:
                 is_updating.set(False)  # Hide loading
     # Watch for changes in scenario (not opacity)
-    solara.use_effect(update_map_layer, [climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value])
+    solara.use_effect(update_map_layer, [climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value, show_isoline.value])
 
     # Only update opacity when slider changes
     def update_opacity():
         if map_instance.value:
             map_instance.value.set_salinity_opacity(opacity.value)
+    
     solara.use_effect(update_opacity, [opacity.value])
     
     with solara.Column():
@@ -211,7 +229,6 @@ def Page():
         with solara.Row():
             # Left column for controls - 1/2 of screen
             with solara.Column(style={"width": "50%", "padding": "20px"}):
-                # ...existing code...
                 # Climate Change Section
                 solara.Markdown("## Climate Change")
                 
@@ -295,13 +312,21 @@ def Page():
                             # style={"width": "300px"}
                         )
             with solara.Column(style={"width": "120px", "flex": "none", "padding-left": "10px"}):
-                # Add custom legend for the 2 PSU isoline using Markdown for SVG and label
-                solara.Markdown(
-                    f'''<span style="display:flex;align-items:center;margin-top:16px;">
-                <svg width="32" height="12" style="vertical-align:middle;"><line x1="2" y1="6" x2="30" y2="6" stroke="{ISOLINE_STYLE['color']}" stroke-width="{ISOLINE_STYLE['weight']}"/></svg>
-                <span style="font-size:13px;vertical-align:middle;margin-left:6px;">2 PSU Isoline</span>
-                </span>''',
+                # Show Isoline toggle above the legend
+                solara.Switch(
+                    label="Show Isoline",
+                    value=show_isoline.value,
+                    on_value=show_isoline.set
                 )
+                # Add custom legend for the 2 PSU isoline only if toggled
+                if show_isoline.value:
+                    solara.Markdown(
+                        f'''<span style="display:flex;align-items:center;margin-top:16px;">
+                        <svg width="32" height="12" style="vertical-align:middle;"><line x1="2" y1="6" x2="30" y2="6" stroke="{ISOLINE_STYLE['color']}" stroke-width="{ISOLINE_STYLE['weight']}"/></svg>
+                        <span style="font-size:13px;vertical-align:middle;margin-left:6px;">2 PSU Isoline</span>
+                        </span>''',
+                    )
+                # Always show raster legend image if available
                 if legend_url.value:
                     solara.Image(legend_url.value)
         if error_message.value:

@@ -1,6 +1,17 @@
+import numpy as np
+import pandas as pd
 from pystac_client import Client
 import geopandas as gpd
 import gcsfs
+import os 
+# Impact data
+
+PROVINCES_SHP = os.path.join(os.path.dirname(__file__), "..", "data", "provc.shp")
+PROVINCES_IMPACTS = os.path.join(os.path.dirname(__file__), "..", "data", "production_value_2050.csv")
+
+gdf = gpd.read_file(PROVINCES_SHP).to_crs("EPSG:4326")
+impacts = pd.read_csv(PROVINCES_IMPACTS)
+IMPACTS_GDF = gdf.merge(impacts, left_on='Name', right_on='Province', how='left')
 
 # Create GCS filesystem (anonymous for public bucket)
 fs = gcsfs.GCSFileSystem(anonymous=True)
@@ -29,6 +40,13 @@ CLIMATE_SCENARIOS = {
         "description": "**Extreme scenario (3–4°C global temperature rise)**: Effects of sea level rise and upstream discharge anomalies under higher warming conditions.",
         "scenario_str": "cc85"
     }
+}
+
+# Baseline scenario for impact page
+BASELINE_SCENARIO = {
+    "name": "Baseline (Current Situation)",
+    "description": "Present-day baseline scenario. No climate change or anthropogenic impacts are considered.",
+    "scenario_str": "baseline"
 }
 
 GROUNDWATER_SCENARIOS = {
@@ -126,3 +144,58 @@ def get_isoline_gdf(rcp, year_val, subsidence, riverbed):
     except Exception as e:
         print(f"Error getting isoline for {item_id}: {e}")
     return None
+
+
+# Utility to build item_id for scenario
+def _get_impact_col(rcp, subsidence, riverbed):
+    rcp_val = "RCP 8.5"
+    rcp_code = CLIMATE_SCENARIOS[rcp_val]["scenario_str"]
+    subs_code = GROUNDWATER_SCENARIOS[rcp_val]["scenario_str"] if subsidence else None
+    riverbed_code = RIVERBED_SCENARIOS[rcp_val]["scenario_str"] if riverbed and subsidence else None
+    if rcp:
+        if subsidence and riverbed:
+            id = f"{rcp_code}{subs_code}{riverbed_code}"
+        elif subsidence:
+            id = f"{rcp_code}{subs_code}"
+        else:
+            id = f"{rcp_code}"
+    else:
+        id = "baseline"
+    return id
+
+def get_impact_gdf(rcp, subsidence, riverbed):
+    id = _get_impact_col(rcp, subsidence, riverbed)
+    impacts = IMPACTS_GDF[[id, 'geometry']].copy()
+    if not rcp:
+        bins = [0.1, 0.1e3, 0.2e3, 0.5e3, 1.176e3, np.inf]  # in millions USD
+        colors = ["#ffffcc", "#a1dab4", "#41b6c4", "#2c7fb8", "#253494"]
+        def format_val(val):
+            # val is in millions USD
+            if val >= 1e3:
+                return f"{val/1e3:.2f}B"
+            else:
+                return f"{val:.0f}M"
+        labels = [f"< {format_val(bins[0])}"]
+        labels += [f"{format_val(bins[i])}–{format_val(bins[i+1])}" for i in range(len(bins)-2)]
+        name = "Baseline Production Value (USD)"
+        impacts = impacts.rename(columns={id: name})
+    else:
+        impacts["value"] = np.where(
+            IMPACTS_GDF["baseline"] != 0,
+            (impacts[id] - IMPACTS_GDF["baseline"]) / IMPACTS_GDF["baseline"] * -100,
+            0
+        )        
+        bins = [0, 5, 10, 20, 40, np.inf]  # in percentage
+        colors = ["#fff5f0", "#fcbba1", "#fc9272", "#fb6a4a", "#cb181d"]
+        labels = [f"< {bins[0]}%"]
+        labels += [f"{bins[i]}%–{bins[i+1]}%" for i in range(len(bins)-2)]
+        name = "Production Value Decrease (%)"
+        impacts = impacts.rename(columns={"value": name})
+    config = {
+        "data_column": name,
+        "bins": bins,
+        "colors": colors,
+        "labels": labels}
+    
+    return impacts, config
+

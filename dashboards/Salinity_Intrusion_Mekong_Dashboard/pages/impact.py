@@ -1,78 +1,103 @@
-
 import solara
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../utils')))
 
-from general import YEAR_OPTIONS, SWITCH_LABELS, GROUNDWATER_SCENARIOS, RIVERBED_SCENARIOS
+from general import YEAR_OPTIONS, SWITCH_LABELS, GROUNDWATER_SCENARIOS, RIVERBED_SCENARIOS, CLIMATE_SCENARIOS, BASELINE_SCENARIO, get_impact_gdf
 
+
+# Only RCP 8.5 and year 2050 for impact page
+rcp = solara.reactive("RCP 8.5")
 year = solara.reactive("2050")
-subsidence_name = GROUNDWATER_SCENARIOS["RCP 8.5"]["name"]
-riverbed_name = RIVERBED_SCENARIOS["RCP 8.5"]["name"]
+subsidence_name = GROUNDWATER_SCENARIOS[rcp.value]["name"]
+riverbed_name = RIVERBED_SCENARIOS[rcp.value]["name"]
 
-# Scenario names and info (copied from hazard.py, but only relevant scenarios)
+
+# Build scenarios from general.py
 SCENARIOS = [
+    BASELINE_SCENARIO,
     {
-        "name": "Baseline (Current Situation)",
-        "description": "Present-day baseline scenario. No climate change or anthropogenic impacts are considered."
+        "name": f"Climate Change ({rcp.value})",
+        "description": CLIMATE_SCENARIOS[rcp.value]["description"],
+        "scenario_str": CLIMATE_SCENARIOS[rcp.value]["scenario_str"] + "y"
     },
     {
-        "name": "Climate Change (RCP 8.5)",
-        "description": "Future scenario with climate change (RCP 8.5) only. Select a year to view projections."
+        "name": f"Climate Change + Groundwater Extraction",
+        "description": CLIMATE_SCENARIOS[rcp.value]["description"] + "\n" + GROUNDWATER_SCENARIOS[rcp.value]["description"],
+        "scenario_str": CLIMATE_SCENARIOS[rcp.value]["scenario_str"] + GROUNDWATER_SCENARIOS[rcp.value]["scenario_str"] + "y"
     },
     {
-        "name": "Climate Change + Groundwater Extraction",
-        "description": "Future scenario with climate change (RCP 8.5) and groundwater extraction impacts."
-    },
-    {
-        "name": "Climate Change + Groundwater Extraction + Sediment Starvation",
-        "description": "Future scenario with climate change (RCP 8.5), groundwater extraction, and sediment starvation impacts."
+        "name": f"Climate Change + Groundwater Extraction + Sediment Starvation",
+        "description": CLIMATE_SCENARIOS[rcp.value]["description"] + "\n" + GROUNDWATER_SCENARIOS[rcp.value]["description"] + "\n" + RIVERBED_SCENARIOS[rcp.value]["description"],
+        "scenario_str": CLIMATE_SCENARIOS[rcp.value]["scenario_str"] + GROUNDWATER_SCENARIOS[rcp.value]["scenario_str"] + RIVERBED_SCENARIOS[rcp.value]["scenario_str"] + "y"
     }
 ]
 
-# Reactive variables for scenario selection
+
+# Only switches for scenario selection
 baseline_enabled = solara.reactive(True)  # Always enabled
 climate_enabled = solara.reactive(False)
-groundwater_enabled = solara.reactive(False)
-sediment_enabled = solara.reactive(False)
+subsidence_enabled = solara.reactive(False)
+riverbed_enabled = solara.reactive(False)
 
 # Error message state for GUI alerts
 error_message = solara.reactive(None)
 
-regions = [
-    "TraVinh", "TienGi", "BenTre", "KienGi", "BacLieu", "SocTrang", "CanTho", "HuaGi", "AnGi", "CaMau", "DongTh", "VinghLn"
-]
 
-# Dummy rice yield data for each scenario (values in tons/ha)
-dummy_yield = {
-    "Baseline": [5.2, 5.5, 5.3, 5.4, 5.1, 5.6, 5.7, 5.3, 5.8, 5.0, 5.2, 5.4],
-    "Climate Change": [4.8, 5.0, 4.9, 5.0, 4.7, 5.1, 5.2, 4.9, 5.3, 4.6, 4.8, 5.0],
-    "Climate Change + Groundwater Extraction": [4.2, 4.5, 4.3, 4.4, 4.1, 4.6, 4.7, 4.3, 4.8, 4.0, 4.2, 4.4],
-    "Climate Change + Groundwater Extraction + Sediment Starvation": [3.7, 4.0, 3.8, 3.9, 3.6, 4.1, 4.2, 3.8, 4.3, 3.5, 3.7, 3.9]
-}
+# Map plot logic (similar to hazard)
+from map import Map
+map_instance = solara.reactive(None)
 
-def plot_yield(scenario):
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.bar(regions, dummy_yield[scenario], color="#4caf50")
-    ax.set_ylabel("Rice Yield (tons/ha)")
-    ax.set_title(f"Rice Yield by Region - {scenario}")
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-    return fig
 
 @solara.component
 def Page():
     def get_scenario_description():
-        if sediment_enabled.value:
+        if riverbed_enabled.value:
             return f"**{SCENARIOS[3]['name']}**\n\n{SCENARIOS[3]['description']}\n\n**Year:** {year.value}"
-        elif groundwater_enabled.value:
+        elif subsidence_enabled.value:
             return f"**{SCENARIOS[2]['name']}**\n\n{SCENARIOS[2]['description']}\n\n**Year:** {year.value}"
         elif climate_enabled.value:
             return f"**{SCENARIOS[1]['name']}**\n\n{SCENARIOS[1]['description']}\n\n**Year:** {year.value}"
         else:
             return f"**{SCENARIOS[0]['name']}**\n\n{SCENARIOS[0]['description']}"
+
+
+    # Create map instance if it doesn't exist
+    if map_instance.value is None:
+        new_map = Map(
+            zoom=8,
+            center=(10, 105.7),
+            height="600px",
+            width="100%",
+            draw_control=False,
+            fullscreen_control=False,
+            toolbar_control=False,
+        )
+        map_instance.set(new_map)
+
+    # Directly update map with GDF only (no WMS, no opacity)
+    def update_map():
+        if map_instance.value:
+            map_instance.value.clear_gdf_layers()
+            climate = climate_enabled.value
+            subs = subsidence_enabled.value
+            riverbed = riverbed_enabled.value
+            gdf, config = get_impact_gdf(climate, subs, riverbed)
+            if gdf is not None:
+                map_instance.value.add_choropleth(
+                    data=gdf,
+                    column=config["data_column"],
+                    scheme="UserDefined",
+                    colors=config["colors"],
+                    labels=config["labels"],
+                    classification_kwds={"bins": config["bins"]},
+                    info_mode=None,
+                    # add_legend=False
+                )
+                
+    solara.use_effect(update_map, [climate_enabled.value, subsidence_enabled.value, riverbed_enabled.value])
 
     with solara.Column():
         with solara.Row():
@@ -91,8 +116,8 @@ def Page():
                         if climate_enabled.value:
                             solara.Switch(
                                 label=f"{SWITCH_LABELS['groundwater']} - {subsidence_name}",
-                                value=groundwater_enabled.value,
-                                on_value=lambda v: groundwater_enabled.set(v),
+                                value=subsidence_enabled.value,
+                                on_value=lambda v: subsidence_enabled.set(v),
                                 disabled=False
                             )
                         else:
@@ -102,13 +127,13 @@ def Page():
                                 on_value=lambda x: None,
                                 disabled=True
                             )
-                            if groundwater_enabled.value:
-                                groundwater_enabled.set(False)
-                        if groundwater_enabled.value:
+                            if subsidence_enabled.value:
+                                subsidence_enabled.set(False)
+                        if subsidence_enabled.value:
                             solara.Switch(
                                 label=f"{SWITCH_LABELS['riverbed']} - {riverbed_name}",
-                                value=sediment_enabled.value,
-                                on_value=lambda v: sediment_enabled.set(v),
+                                value=riverbed_enabled.value,
+                                on_value=lambda v: riverbed_enabled.set(v),
                                 disabled=False
                             )
                         else:
@@ -118,26 +143,19 @@ def Page():
                                 on_value=lambda x: None,
                                 disabled=True
                             )
-                            if sediment_enabled.value:
-                                sediment_enabled.set(False)
-                        if not climate_enabled.value and groundwater_enabled.value:
-                            groundwater_enabled.set(False)
-                        if not groundwater_enabled.value and sediment_enabled.value:
-                            sediment_enabled.set(False)
+                            if riverbed_enabled.value:
+                                riverbed_enabled.set(False)
+                        if not climate_enabled.value and subsidence_enabled.value:
+                            subsidence_enabled.set(False)
+                        if not subsidence_enabled.value and riverbed_enabled.value:
+                            riverbed_enabled.set(False)
                     with solara.Column(style={"flex": "1", "padding-left": "10px"}):
                         with solara.Card(margin=0, elevation=2):
                             solara.Markdown(get_scenario_description())
-            # Right column for graph
+            # Right column for map
             with solara.Column(style={"flex": "1"}):
-                # Select scenario for plotting
-                if sediment_enabled.value:
-                    scenario = "Climate Change + Groundwater Extraction + Sediment Starvation"
-                elif groundwater_enabled.value:
-                    scenario = "Climate Change + Groundwater Extraction"
-                elif climate_enabled.value:
-                    scenario = "Climate Change"
-                else:
-                    scenario = "Baseline"
-                solara.FigureMatplotlib(plot_yield(scenario))
+                # Show map for selected scenario (GDF only)
+                if map_instance.value:
+                    solara.display(map_instance.value)
         if error_message.value:
             solara.Error(error_message.value)

@@ -1,4 +1,5 @@
 import leafmap as leafmap
+# import leafmap.maplibregl as leafmap
 
 class Map(leafmap.Map):
     def __init__(self, **kwargs):
@@ -84,3 +85,69 @@ class Map(leafmap.Map):
                         map_layer.opacity = opacity_value
                     elif hasattr(map_layer, 'set_opacity'):
                         map_layer.set_opacity(opacity_value)
+                        
+    def add_choropleth(
+        self,
+        data,
+        column,
+        cmap=None,
+        colors=None,
+        labels=None,
+        scheme="Quantiles",
+        k=5,
+        add_legend=True,
+        legend_title=None,
+        legend_position="bottomright",
+        legend_kwds=None,
+        classification_kwds=None,
+        style_function=None,
+        highlight_function=None,
+        layer_name="Choropleth",
+        info_mode="on_hover",
+        encoding="utf-8",
+        **kwargs,
+        ):
+        self.clear_choropleth_layers()
+        self.add_data(
+            data=data,
+            column=column,
+            cmap=cmap,
+            colors=colors,
+            labels=labels,
+            scheme=scheme,
+            k=k,
+            add_legend=add_legend,
+            legend_title=legend_title,
+            legend_position=legend_position,
+            legend_kwds=legend_kwds,
+            classification_kwds=classification_kwds,
+            style_function=style_function,
+            highlight_function=highlight_function,
+            layer_name=layer_name,
+            info_mode=info_mode,
+            encoding=encoding,
+            **kwargs,
+        )
+        self._current_choropleth_layers = [layer_name]
+
+    def clear_choropleth_layers(self):
+        if hasattr(self, 'layers') and self.layers and hasattr(self, '_current_choropleth_layers'):
+            layers_to_remove = []
+            for layer in self.layers:
+                if hasattr(layer, 'name') and layer.name in self._current_choropleth_layers:
+                    layers_to_remove.append(layer)
+            for layer in layers_to_remove:
+                try:
+                    self.remove_layer(layer)
+                except Exception as e:
+                    print(f"Error removing choropleth layer: {e}")
+        self._current_choropleth_layers = []
+        self.legend_url = None
+        # Remove the choropleth legend control if present
+        if hasattr(self, "controls") and hasattr(self, "remove_control"):
+            # Try to find a legend control in self.controls
+            for info_control in self.controls:
+                try:
+                    self.remove_control(info_control)
+                except Exception as e:
+                    print(f"Error removing choropleth legend control: {e}")

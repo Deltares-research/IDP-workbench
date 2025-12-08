@@ -18,3 +18,4 @@ geopandas
 rioxarray
 leafmap
 mapclassify
+pyarrow

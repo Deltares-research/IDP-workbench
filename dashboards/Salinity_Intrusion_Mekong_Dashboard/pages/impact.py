@@ -93,8 +93,7 @@ def Page():
                     colors=config["colors"],
                     labels=config["labels"],
                     classification_kwds={"bins": config["bins"]},
-                    info_mode=None,
-                    # add_legend=False
+                    # info_mode=None,
                 )
                 
     solara.use_effect(update_map, [climate_enabled.value, subsidence_enabled.value, riverbed_enabled.value])

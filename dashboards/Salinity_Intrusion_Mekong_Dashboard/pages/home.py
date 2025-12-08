@@ -24,7 +24,7 @@ def Page():
 		"""
 		## Dashboard Pages
 		- **Hazard:** View and compare salinity intrusion maps for different scenario combinations. Adjust climate, subsidence, and riverbed settings to see their effects on the delta.
-		- **Impact:** Assess the consequences for agriculture, water resources, and population. This page provides summary statistics and visualizations of affected areas.
+		- **Impact:** Assess the consequences for for agriculture production of rice based on different scenarios for the year 2050 under RCP 8.5.
 
 		---
 		For more details, see the [Nature paper](https://www.nature.com/articles/s43247-021-00208-5).

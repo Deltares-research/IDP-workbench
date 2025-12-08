@@ -191,6 +191,8 @@ def get_impact_gdf(rcp, subsidence, riverbed):
         labels += [f"{bins[i]}%–{bins[i+1]}%" for i in range(len(bins)-2)]
         name = "Production Value Decrease (%)"
         impacts = impacts.rename(columns={"value": name})
+        impacts = impacts[[name, 'geometry']]
+    impacts[name] = impacts[name].round(0)
     config = {
         "data_column": name,
         "bins": bins,

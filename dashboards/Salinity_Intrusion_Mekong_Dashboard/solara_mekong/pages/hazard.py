@@ -1,9 +1,6 @@
 import solara
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../utils')))
 
-from general import (
+from solara_mekong.utils.general import (
     get_wms_config,
     get_isoline_gdf,
     RCP_OPTIONS,
@@ -15,7 +12,7 @@ from general import (
     DEFAULT_TEXT,
 )
 
-from map import Map
+from solara_mekong.utils.map import Map
 
 zoom = solara.reactive(8)
 center = solara.reactive((10, 105.7))  # Mekong Delta coordinates

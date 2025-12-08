@@ -1,12 +1,7 @@
 import solara
-import matplotlib.pyplot as plt
-import numpy as np
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../utils')))
 
-from general import YEAR_OPTIONS, SWITCH_LABELS, GROUNDWATER_SCENARIOS, RIVERBED_SCENARIOS, CLIMATE_SCENARIOS, BASELINE_SCENARIO, get_impact_gdf
-
+from solara_mekong.utils.general import SWITCH_LABELS, GROUNDWATER_SCENARIOS, RIVERBED_SCENARIOS, CLIMATE_SCENARIOS, BASELINE_SCENARIO, get_impact_gdf
+from solara_mekong.utils.map import Map
 
 # Only RCP 8.5 and year 2050 for impact page
 rcp = solara.reactive("RCP 8.5")
@@ -47,7 +42,6 @@ error_message = solara.reactive(None)
 
 
 # Map plot logic (similar to hazard)
-from map import Map
 map_instance = solara.reactive(None)
 
 

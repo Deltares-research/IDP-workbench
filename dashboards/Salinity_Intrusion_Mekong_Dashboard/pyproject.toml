@@ -1,0 +1,24 @@
+[project]
+name = "solara_mekong"
+version = "0.1.0"
+description = "Solara app for Mekong salinity intrusion dashboard"
+authors = [
+    { name = "Your Name", email = "your.email@example.com" }
+]
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+dependencies = [
+    "solara>=1.24.0",
+    # Add other dependencies here
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[project.scripts]
+solara-mekong = "solara_mekong.app:main"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

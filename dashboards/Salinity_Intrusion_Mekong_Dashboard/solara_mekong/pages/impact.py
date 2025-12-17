@@ -1,12 +1,7 @@
 import solara
-import matplotlib.pyplot as plt
-import numpy as np
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../utils')))
 
-from general import YEAR_OPTIONS, SWITCH_LABELS, GROUNDWATER_SCENARIOS, RIVERBED_SCENARIOS, CLIMATE_SCENARIOS, BASELINE_SCENARIO, get_impact_gdf
-
+from solara_mekong.utils.general import SWITCH_LABELS, GROUNDWATER_SCENARIOS, RIVERBED_SCENARIOS, CLIMATE_SCENARIOS, BASELINE_SCENARIO, get_impact_gdf
+from solara_mekong.utils.map import Map
 
 # Only RCP 8.5 and year 2050 for impact page
 rcp = solara.reactive("RCP 8.5")
@@ -47,10 +42,27 @@ error_message = solara.reactive(None)
 
 
 # Map plot logic (similar to hazard)
-from map import Map
 map_instance = solara.reactive(None)
 
-
+# Directly update map with GDF only (no WMS, no opacity)
+def update_map():
+    if map_instance.value:
+        map_instance.value.clear_gdf_layers()
+        climate = climate_enabled.value
+        subs = subsidence_enabled.value
+        riverbed = riverbed_enabled.value
+        gdf, config = get_impact_gdf(climate, subs, riverbed)
+        if gdf is not None:
+            map_instance.value.add_choropleth(
+                data=gdf,
+                column=config["data_column"],
+                scheme="UserDefined",
+                colors=config["colors"],
+                labels=config["labels"],
+                classification_kwds={"bins": config["bins"]},
+                # info_mode=None,
+            )
+                
 @solara.component
 def Page():
     def get_scenario_description():
@@ -76,25 +88,6 @@ def Page():
             toolbar_control=False,
         )
         map_instance.set(new_map)
-
-    # Directly update map with GDF only (no WMS, no opacity)
-    def update_map():
-        if map_instance.value:
-            map_instance.value.clear_gdf_layers()
-            climate = climate_enabled.value
-            subs = subsidence_enabled.value
-            riverbed = riverbed_enabled.value
-            gdf, config = get_impact_gdf(climate, subs, riverbed)
-            if gdf is not None:
-                map_instance.value.add_choropleth(
-                    data=gdf,
-                    column=config["data_column"],
-                    scheme="UserDefined",
-                    colors=config["colors"],
-                    labels=config["labels"],
-                    classification_kwds={"bins": config["bins"]},
-                    # info_mode=None,
-                )
                 
     solara.use_effect(update_map, [climate_enabled.value, subsidence_enabled.value, riverbed_enabled.value])
 
@@ -156,5 +149,13 @@ def Page():
                 # Show map for selected scenario (GDF only)
                 if map_instance.value:
                     solara.display(map_instance.value)
+        solara.Info(
+            """
+            In this page you can explore the projected impacts of salinity intrusion on rice production in the Mekong Delta for the year 2050 under different scenarios.
+            
+            When no scenario is selected, the Production Value is shown for the current situation (baseline). 
+            Enabling the different drivers of change will update the map to show the projected Production Value decrease under the selected scenario for 2050.
+            """
+        )
         if error_message.value:
             solara.Error(error_message.value)

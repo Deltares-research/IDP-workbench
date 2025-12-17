@@ -1,9 +1,6 @@
 import solara
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../utils')))
 
-from general import (
+from solara_mekong.utils.general import (
     get_wms_config,
     get_isoline_gdf,
     RCP_OPTIONS,
@@ -15,7 +12,7 @@ from general import (
     DEFAULT_TEXT,
 )
 
-from map import Map
+from solara_mekong.utils.map import Map
 
 zoom = solara.reactive(8)
 center = solara.reactive((10, 105.7))  # Mekong Delta coordinates
@@ -50,28 +47,57 @@ ISOLINE_STYLE = {
     "weight": 2
 }
 
-                        
+# Function to get dynamic description based on current selections
+def get_climate_description():
+    return CLIMATE_SCENARIOS[climate_rcp.value]["description"]
+
+def get_anthropogenic_description():
+    descriptions = []
+    
+    if subsidence_enabled.value:
+        descriptions.append(GROUNDWATER_SCENARIOS[climate_rcp.value]["description"])
+    
+    if riverbed_enabled.value:
+        descriptions.append("\n\n" + RIVERBED_SCENARIOS[climate_rcp.value]["description"])
+    
+    if not descriptions:
+        return DEFAULT_TEXT["no_anthropogenic"]
+    
+    return " ".join(descriptions)
+
+# Update map when any scenario parameter changes (not opacity)
+def update_map_layer():
+    if map_instance.value:
+        is_updating.set(True)  # Show loading
+        try:
+            # Update WMS layer
+            config = get_wms_config(climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value)
+            map_instance.value.add_wms_layer_general(config, layer_name="Salinity WMS", opacity_value=opacity.value)
+            # Update isoline layer
+            map_instance.value.clear_gdf_layers()
+            if show_isoline.value:
+                isoline_gdf = get_isoline_gdf(climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value)
+                if isoline_gdf is not None:
+                    map_instance.value.add_gdf_layer_general(
+                        isoline_gdf,
+                        layer_name="2 PSU Isoline",
+                        style=ISOLINE_STYLE,
+                        hover_style=ISOLINE_STYLE
+                    )
+            # Set legend_url reactive
+            legend_url.set(map_instance.value.legend_url)
+        finally:
+            is_updating.set(False)  # Hide loading  
+
+# Only update opacity when slider changes
+def update_opacity():
+    if map_instance.value:
+        map_instance.value.set_layer_opacity(opacity.value)
+        # Force Solara to re-render the map by updating the reactive value
+        map_instance.set(map_instance.value)
+                    
 @solara.component
 def Page():
-    
-    # Function to get dynamic description based on current selections
-    def get_climate_description():
-        return CLIMATE_SCENARIOS[climate_rcp.value]["description"]
-    
-    def get_anthropogenic_description():
-        descriptions = []
-        
-        if subsidence_enabled.value:
-            descriptions.append(GROUNDWATER_SCENARIOS[climate_rcp.value]["description"])
-        
-        if riverbed_enabled.value:
-            descriptions.append("\n\n" + RIVERBED_SCENARIOS[climate_rcp.value]["description"])
-        
-        if not descriptions:
-            return DEFAULT_TEXT["no_anthropogenic"]
-        
-        return " ".join(descriptions)
-    
     # Create map instance if it doesn't exist
     if map_instance.value is None:
         new_map = Map(
@@ -99,39 +125,10 @@ def Page():
         map_instance.set(new_map)
         # Set legend_url reactive
         legend_url.set(new_map.legend_url)
-
-    # Update map when any scenario parameter changes (not opacity)
-    def update_map_layer():
-        if map_instance.value:
-            is_updating.set(True)  # Show loading
-            try:
-                # Update WMS layer
-                config = get_wms_config(climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value)
-                map_instance.value.add_wms_layer_general(config, layer_name="Salinity WMS", opacity_value=opacity.value)
-                # Update isoline layer
-                map_instance.value.clear_gdf_layers()
-                if show_isoline.value:
-                    isoline_gdf = get_isoline_gdf(climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value)
-                    if isoline_gdf is not None:
-                        map_instance.value.add_gdf_layer_general(
-                            isoline_gdf,
-                            layer_name="2 PSU Isoline",
-                            style=ISOLINE_STYLE,
-                            hover_style=ISOLINE_STYLE
-                        )
-                # Set legend_url reactive
-                legend_url.set(map_instance.value.legend_url)
-            finally:
-                is_updating.set(False)  # Hide loading
+    
     # Watch for changes in scenario (not opacity)
     solara.use_effect(update_map_layer, [climate_rcp.value, year.value, subsidence_enabled.value, riverbed_enabled.value, show_isoline.value])
-
-    # Only update opacity when slider changes
-    def update_opacity():
-        if map_instance.value:
-            map_instance.value.set_layer_opacity(opacity.value)
-            # Force Solara to re-render the map by updating the reactive value
-            map_instance.set(map_instance.value)
+    # Watch for changes in opacity    
     solara.use_effect(update_opacity, [opacity.value])
     
     with solara.Column():
@@ -205,12 +202,10 @@ def Page():
                             # Reset riverbed if subsidence gets disabled
                             if riverbed_enabled.value:
                                 riverbed_enabled.set(False)
-                    
                     # Right side: Description
                     with solara.Column(style={"flex": "1", "padding-left": "10px"}):
                         with solara.Card(margin=0, elevation=2):
                             solara.Markdown(get_anthropogenic_description())
-            
             # Right column for map - 1/2 of screen
             with solara.Column(style={"flex": "1"}):
                 # Use the map instance
@@ -244,5 +239,12 @@ def Page():
                 # Always show raster legend image if available
                 if legend_url.value:
                     solara.Image(legend_url.value)
+        solara.Info(
+                """
+                In this page you can explore the projected salinity intrusion in the Mekong Delta for the years 2030, 2040 and 2050 under different scenarios.
+                The map shows the salinity increase relative to the baseline year (2015) and will be updated based on your selections of climate change scenario (RCP), year, and anthropogenic changes (groundwater extraction and riverbed changes).
+                
+                """
+        )
         if error_message.value:
             solara.Error(error_message.value)

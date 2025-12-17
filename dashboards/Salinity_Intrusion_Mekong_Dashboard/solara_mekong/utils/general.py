@@ -6,7 +6,7 @@ import gcsfs
 import os 
 # Impact data
 
-PROVINCES_SHP = os.path.join(os.path.dirname(__file__), "..", "data", "provc.shp")
+PROVINCES_SHP = os.path.join(os.path.dirname(__file__), "..", "data", "provc.geojson")
 PROVINCES_IMPACTS = os.path.join(os.path.dirname(__file__), "..", "data", "production_value_2050.csv")
 
 gdf = gpd.read_file(PROVINCES_SHP).to_crs("EPSG:4326")

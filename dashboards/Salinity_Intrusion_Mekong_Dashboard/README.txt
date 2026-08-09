@@ -11,7 +11,7 @@ From the IDP-workbench repo root:
   pip install -r dashboards/requirements.txt
   pip install -e dashboards/Salinity_Intrusion_Mekong_Dashboard
 
-  # Register the env as a Jupyter kernel (needed in VS Code / Cursor)
+  # Register the env as a Jupyter kernel (needed in VS Code)
   python -m ipykernel install --user --name solara_mekong --display-name "Python (solara_mekong)"
 
 ## Run the Solara app
@@ -26,9 +26,9 @@ Alternatively from the dashboard package root:
   cd dashboards/Salinity_Intrusion_Mekong_Dashboard
   solara run solara_mekong.app --host=0.0.0.0 --port=8765
 
-## Notebooks (run in VS Code / Cursor)
+## Notebooks (run in VS Code)
 
-Open either notebook in VS Code (or Cursor):
+Open either notebook in VS Code:
 
   solara_mekong/notebooks/view_salinity_intrution.ipynb
   solara_mekong/notebooks/view_crop_productivity.ipynb

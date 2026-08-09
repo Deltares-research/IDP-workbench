@@ -3,6 +3,7 @@ solara
 solara[assets]
 solara-server[starlette]
 pytest-ipywidgets
+ipykernel
 
 # App dependencies
 pandas
@@ -14,6 +15,7 @@ tqdm
 numpy
 pystac-client
 gcsfs
+fsspec
 geopandas
 rioxarray
 leafmap

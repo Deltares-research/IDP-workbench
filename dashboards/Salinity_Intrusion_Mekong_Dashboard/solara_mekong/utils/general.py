@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from pystac_client import Client
 import geopandas as gpd
 import gcsfs
-import os 
+import os
 # Impact data
 
 PROVINCES_SHP = os.path.join(os.path.dirname(__file__), "..", "data", "provc.geojson")
@@ -24,9 +25,48 @@ catalog = Client.open(
 sal_collection = catalog.get_collection("Salinity" )
 sal_incr_collection = catalog.get_collection("Salinity Increase" )
 
+# Remote Deltares GeoServer (baseline absolute salinity WMS)
+REMOTE_GEOSERVER_URL = os.getenv(
+    "REMOTE_GEOSERVER_URL",
+    "https://international-delta-platform.avi.directory.intra/geoserver",
+).rstrip("/")
+BASELINE_SALINITY_WORKSPACE = os.getenv("BASELINE_SALINITY_WORKSPACE", "salinity")
+
 # Configuration variables for input options
 RCP_OPTIONS = ["RCP 4.5", "RCP 8.5"]
 YEAR_OPTIONS = ["2030", "2040", "2050"]
+BASELINE_YEAR_OPTIONS = ["2014", "2015", "2016"]
+
+# Crop productivity correction (impact page for historical baseline years)
+CROP_SEASON_OPTIONS = [
+    "WinterSpring (ha)",
+    "SummerAutumn (ha)",
+    "AutumnWinter (ha)",
+    "MUA (ha)",
+]
+CROP_METRIC_OPTIONS = [
+    "corrected_yield",
+    "corrected_yield_pp",
+    "hectares",
+    "salinity",
+    "yield",
+]
+_CROP_PARQUET_CANDIDATES = [
+    Path(
+        r"C:\Ocean\Work\Projects\2026\IDP\Data\stac_folder"
+        r"\crop_productivity_correction\parquets\baseline\corrected_yield.parquet"
+    ),
+    Path(
+        r"P:\11211454-002-idt\IDP\Vietnam\Mekong\salinity_mekong"
+        r"\preprocessed_outputs\stac_folder\crop_productivity_correction"
+        r"\parquets\baseline\corrected_yield.parquet"
+    ),
+]
+GCS_CROP_PARQUET_URL = (
+    "https://storage.googleapis.com/gca-data-public/gca/"
+    "crop_productivity_correction/parquets/baseline/corrected_yield.parquet"
+)
+_CROP_GDF = None
 
 # Scenario names and descriptions
 CLIMATE_SCENARIOS = {
@@ -107,7 +147,17 @@ def _get_item_id(rcp, year_val, subsidence, riverbed):
     filename = f"p50_{year_str}.tif"
     return f"{folder}/{filename}"
 
-# Get WMS config dict for scenario
+
+def _make_legend_url(wms_base: str, layer: str) -> str:
+    """Build GetLegendGraphic URL (same pattern used by hazard / view_dashboard)."""
+    base = wms_base.split("?")[0]
+    return (
+        f"{base}?REQUEST=GetLegendGraphic&VERSION=1.0.0"
+        f"&FORMAT=image/png&LAYER={layer}"
+    )
+
+
+# Get WMS config dict for scenario (remote STAC visual asset -> Deltares GeoServer)
 def get_wms_config(rcp, year_val, subsidence, riverbed):
     item_id = _get_item_id(rcp, year_val, subsidence, riverbed)
     try:
@@ -115,11 +165,7 @@ def get_wms_config(rcp, year_val, subsidence, riverbed):
         visual_asset = item.assets.get("visual")
         url = visual_asset.href
         layer = visual_asset.title
-        # Compose legend_url for WMS GetLegendGraphic
-        legend_url = None
-        if url and layer:
-            base_url = url.split('?')[0]
-            legend_url = f"{base_url}?REQUEST=GetLegendGraphic&VERSION=1.0.0&FORMAT=image/png&LAYER={layer}"
+        legend_url = _make_legend_url(url, layer) if url and layer else None
         config = {
             "url": url,
             "layer": layer,
@@ -129,6 +175,27 @@ def get_wms_config(rcp, year_val, subsidence, riverbed):
         print(f"Error getting WMS config for {item_id}: {e}")
         config = None
     return config
+
+
+def get_baseline_salinity_wms_config(year_val):
+    """
+    WMS config for absolute baseline salinity (`baseline_p50_{year}`).
+
+    Same return shape as get_wms_config: {url, layer, legend_url}.
+    Uses remote Deltares GeoServer under workspace `salinity`.
+    """
+    layer_name = f"baseline_p50_{year_val}"
+    try:
+        url = f"{REMOTE_GEOSERVER_URL}/wms/{BASELINE_SALINITY_WORKSPACE}"
+        layer = layer_name
+        return {
+            "url": url,
+            "layer": layer,
+            "legend_url": _make_legend_url(url, layer),
+        }
+    except Exception as e:
+        print(f"Error getting baseline salinity WMS config for {year_val}: {e}")
+        return None
 
 # Get isoline GeoDataFrame for scenario
 def get_isoline_gdf(rcp, year_val, subsidence, riverbed):
@@ -200,4 +267,71 @@ def get_impact_gdf(rcp, subsidence, riverbed):
         "labels": labels}
     
     return impacts, config
+
+
+def resolve_crop_parquet_path(preferred=None):
+    """Return a readable crop Productivity GeoParquet path/URL (local first, then GCS)."""
+    if preferred is not None:
+        p = Path(preferred)
+        if p.exists():
+            return str(p)
+        raise FileNotFoundError(f"Crop parquet not found: {p}")
+    for candidate in _CROP_PARQUET_CANDIDATES:
+        if candidate.exists():
+            return str(candidate)
+    return GCS_CROP_PARQUET_URL
+
+
+def _load_crop_productivity_gdf():
+    """Lazy-load crop productivity GDF (mirrors IMPACTS_GDF for rice production)."""
+    global _CROP_GDF
+    if _CROP_GDF is None:
+        src = resolve_crop_parquet_path()
+        gdf = gpd.read_parquet(src)
+        if gdf.crs is None:
+            gdf = gdf.set_crs(4326)
+        else:
+            gdf = gdf.to_crs(4326)
+        gdf["year"] = pd.to_numeric(gdf["year"], errors="coerce").astype("Int64")
+        _CROP_GDF = gdf
+    return _CROP_GDF
+
+
+def get_crop_impact_gdf(year_val, crop_name, metric="corrected_yield"):
+    """
+    Filter crop productivity to one year + season and build choropleth config.
+
+    Same return shape as get_impact_gdf: (GeoDataFrame, config).
+    Uses Quantiles so leafmap/mapclassify bin counts match the color ramp.
+    """
+    if metric not in CROP_METRIC_OPTIONS:
+        raise ValueError(
+            f"Unsupported metric '{metric}'. Choose from {CROP_METRIC_OPTIONS}"
+        )
+
+    gdf = _load_crop_productivity_gdf()
+    year_int = int(year_val)
+    subset = gdf[(gdf["year"] == year_int) & (gdf["crop_name"] == crop_name)].copy()
+    if subset.empty:
+        raise ValueError(
+            f"No crop productivity rows for year={year_int}, crop={crop_name}"
+        )
+
+    out = subset[[metric, "geometry", "Name", "area_map_name", "zone"]].copy()
+    values = out[metric].astype(float).replace([np.inf, -np.inf], np.nan).dropna()
+    n_unique = int(values.nunique()) if not values.empty else 0
+    # mapclassify needs k <= number of unique values
+    k = max(1, min(5, n_unique)) if n_unique else 1
+    colors = ["#ffffcc", "#c7e9b4", "#7fcdbb", "#41b6c4", "#2c7fb8"][:k]
+    name = f"{metric} · {crop_name} · {year_int}"
+
+    config = {
+        "data_column": metric,
+        "scheme": "Quantiles" if k > 1 else "EqualInterval",
+        "k": k,
+        "colors": colors,
+        "labels": None,
+        "title": name,
+    }
+    return out, config
 

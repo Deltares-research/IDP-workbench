@@ -17,8 +17,8 @@ requests.Session.request = patched_request
 # Connect to GeoServer
 geo = Geoserver(
     "https://international-delta-platform.avi.directory.intra/geoserver",
-    username="admin",
-    password="1'46L!:7#y^n9u3sAJw}LQ&$MIqI4w",
+    username="",
+    password="",
 )
 
 # --- Configuration ---
